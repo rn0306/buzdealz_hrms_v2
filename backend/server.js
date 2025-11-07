@@ -6,6 +6,7 @@ const { sequelize } = require('./models');
 const authRoutes = require('./routes/authRoutes');
 const onboardingRoutes = require('./routes/onboardingRoutes');
 const candidateRoutes = require('./routes/candidateRoutes');
+const OnboardingDetailRoutes = require("./routes/onboardingDetailRoutes");
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.get('/', (req, res) => res.json({ message: 'Buzdealz HRMS API' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/candidates', candidateRoutes);
+app.use("/api/onboarding-details", OnboardingDetailRoutes);
 
 const PORT = process.env.PORT || 5000;
 
