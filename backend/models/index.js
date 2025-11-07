@@ -27,8 +27,9 @@ Candidate.belongsTo(User, { foreignKey: 'assigned_recruiter', as: 'recruiter' })
 User.hasMany(Candidate, { foreignKey: 'assigned_recruiter', as: 'assignedCandidates' });
 
 // Onboarding Details & Candidate
-OnboardingDetail.belongsTo(Candidate, { foreignKey: 'candidate_id' });
-Candidate.hasOne(OnboardingDetail, { foreignKey: 'candidate_id' });
+OnboardingDetail.belongsTo(Candidate, { foreignKey: 'candidate_id', as: 'candidate' });
+Candidate.hasOne(OnboardingDetail, { foreignKey: 'candidate_id', as: 'onboardingDetail' });
+
 
 // Offer Letters
 OfferLetter.belongsTo(Candidate, { foreignKey: 'candidate_id' });

@@ -51,11 +51,7 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
     {
       label: 'Intern Management',
       icon: 'GraduationCap',
-      children: [
-        { label: 'Active Interns', path: '/interns/active' },
-        { label: 'Extensions', path: '/interns/extensions' },
-        { label: 'Terminations', path: '/interns/terminations' },
-      ],
+      path: '/interns/active'
     },
     {
       label: 'Subscriptions',
@@ -98,11 +94,17 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
     {
       label: 'Recruitment',
       icon: 'Users',
-      children: [
-        { label: 'Candidates', path: '/recruitment/candidates' },
-        { label: 'Shortlisting', path: '/recruitment/board' },
-        { label: 'Invite Candidate', path: '/recruitment/invite' },
-      ],
+      path: '/recruitment/candidates', // removed children, added path for direct landing
+    },
+     {
+      label: 'Onboarding',
+      icon: 'ClipboardCheck',
+      path: '/onboarding/pending', // removed children, added path for direct landing
+    },
+    {
+      label: 'Intern Management',
+      icon: 'GraduationCap',
+      path: '/interns/active'
     },
     { label: 'Documents', icon: 'FileText', path: '/documents' },
     { label: 'Reports', icon: 'PieChart', path: '/reports' },
