@@ -7,14 +7,10 @@ function generateOnboardingToken(candidateId) {
   return jwt.sign({ candidateId }, process.env.JWT_SECRET, { expiresIn: '7d' });
 }
 
-// Helper: Generate random password
-function generateRandomPassword(length = 10) {
-  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=';
-  let ret = '';
-  for (let i = 0; i < length; i++) {
-    ret += charset[Math.floor(Math.random() * charset.length)];
-  }
-  return ret;
+// Helper: Generate password from first name
+function generatePasswordFromName(full_name) {
+  const firstName = full_name.split(' ')[0].toLowerCase();
+  return `${firstName}123$`;
 }
 
 class OnboardingController {
@@ -64,7 +60,8 @@ class OnboardingController {
         return res.status(201).json({ message: 'Candidate created; user account already exists', candidate });
       }
 
-      const generatedPassword = generateRandomPassword(12);
+      // Generate password using first name
+      const generatedPassword = generatePasswordFromName(full_name);
       const user = await User.create({
         email,
         password_hash: generatedPassword,

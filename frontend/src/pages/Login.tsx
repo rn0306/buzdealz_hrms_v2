@@ -9,26 +9,27 @@ const Login = () => {
   const [error, setError] = useState('')
   const navigate = useNavigate()
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
     try {
-      // Call backend login API
       const response = await api.post('/api/auth/login', { email, password })
 
       if (response.data && response.data.user && response.data.token) {
-        const { full_name, role } = response.data.user
+        const { id, full_name, email, role } = response.data.user
         const token = response.data.token
 
-        // Save user and token (store role in lowercase to match app Role type)
+        // ✅ Save complete user info including ID and token
         saveUser({
+          id,
           username: full_name || email,
+          email,
           role: (role?.code || 'intern').toLowerCase(),
-          apiToken: token, // ✅ this is key to fix "No token provided"
+          apiToken: token,
         })
 
-        // Redirect based on role
+        // ✅ Redirect based on role
         switch (role?.code) {
           case 'ADMIN':
             navigate('/dashboard')

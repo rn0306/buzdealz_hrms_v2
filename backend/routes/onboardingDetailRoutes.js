@@ -12,7 +12,7 @@ router.get(
 );
 
 // Get onboarding details by ID
-router.get('/:id', auth, checkRole('RECRUITER', 'ADMIN', 'MANAGER'), OnboardingDetailController.get);
+router.get('/:id', auth, OnboardingDetailController.get);
 
 // Edit onboarding details
 router.put('/:id', auth, checkRole('RECRUITER', 'ADMIN'), OnboardingDetailController.update);
