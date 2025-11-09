@@ -10,6 +10,8 @@ import { toast } from 'sonner'
 type Candidate = {
   id: string
   full_name: string
+  fname?: string
+  lname?: string
   email: string
   phone?: string
   source?: string
@@ -40,7 +42,16 @@ export default function Candidates() {
     setLoading(true)
     try {
       const res = await api.get('/api/candidates')
-      setRows(res.data)
+      // Backend may return fname and lname instead of full_name — compute full_name here
+      const normalized = (res.data || []).map((r: any) => ({
+        ...r,
+        // Ensure full_name is available (from fname+lname if missing)
+        full_name: r.full_name || `${(r.fname || '').trim()} ${(r.lname || '').trim()}`.trim(),
+        // current_stage and source may be stored on personalDetail in backend responses
+        current_stage: r.current_stage || r.personalDetail?.current_stage || r.current_stage,
+        source: r.source || r.personalDetail?.source || r.source,
+      }))
+      setRows(normalized)
     } catch (err: any) {
       toast.error(err?.response?.data?.error || 'Failed to load candidates')
     } finally {
@@ -56,7 +67,7 @@ export default function Candidates() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ full_name: '', email: '', phone: '', source: 'manual', resume_url: '' })
+    setForm({ full_name: '', email: '', phone: '', source: 'Portal', resume_url: '' })
     setOpenForm(true)
   }
 
@@ -72,8 +83,16 @@ export default function Candidates() {
     e.preventDefault()
     try {
       if (editing) {
-        // Update existing candidate with status included
-        await api.put(`/api/candidates/${editing.id}`, form)
+      
+        // If status/current_stage was changed, persist it on the personal details resource
+        if (form.current_stage !== undefined) {
+          try {
+            await api.put(`/api/personaldetails/${editing.id}`, { current_stage: form.current_stage })
+          } catch (err: any) {
+            // non-fatal: still allow main update to succeed but surface a warning
+            toast.warning('Candidate updated but failed to update stage: ' + (err?.response?.data?.error || err.message || ''))
+          }
+        }
         toast.success('Candidate updated')
       } else {
         // Create via onboarding endpoint
@@ -82,7 +101,7 @@ export default function Candidates() {
           email: form.email,
           phone: form.phone,
           resume_url: form.resume_url,
-          source: form.source || 'manual',
+          source: form.source || 'Portal',
         }
         await api.post('/api/onboarding/create-candidate', payload)
         toast.success('Candidate created')

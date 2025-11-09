@@ -7,9 +7,13 @@ const Evaluation = sequelize.define('Evaluation', {
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true
   },
-  intern_id: {
+  user_id: {
     type: DataTypes.UUID,
-    allowNull: false
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'user_id'
+    }
   },
   evaluator_id: {
     type: DataTypes.UUID,

@@ -4,6 +4,7 @@ import Input from '../../components/ui/Input'
 import Dialog from '../../components/ui/Dialog'
 import { toast } from 'sonner'
 import { api } from '../../lib/api' // ✅ Added for API calls
+import { getUser } from '../../utils/auth' // ✅ Import to get logged-in user info
 
 export default function Profile() {
   const [openForm, setOpenForm] = useState(false)
@@ -17,7 +18,7 @@ export default function Profile() {
     }
     adharCardDetails: {
       adharNumber?: string
-      adharName?: string
+      panNumber?: string
     }
     bankDetails: {
       bankName?: string
@@ -49,14 +50,65 @@ export default function Profile() {
   })
 
   useEffect(() => {
-    // Fetch candidate profile data if needed here
+    const fetchPersonalDetails = async () => {
+      try {
+        const user = getUser() // get logged-in user
+        if (!user?.id) return
+        
+        const response = await api.get(`/api/personaldetails/${user.id}`)
+        const data = response.data
+
+        // Map API response to form fields
+        const personalDetail = data.personalDetail || {}
+        setProfile({
+          personalDetails: {
+            fullName: `${data.fname} ${data.mname ? data.mname + ' ' : ''}${data.lname}`.trim(),
+            email: data.email || '',
+            phone: data.phone || '',
+          },
+          adharCardDetails: {
+            adharNumber: personalDetail.adhar_card_no || '',
+            panNumber: personalDetail.pan_card_no || '',
+          },
+          bankDetails: {
+            bankName: personalDetail.bank_name || '',
+            accountNumber: personalDetail.account_no || '',
+            ifscCode: personalDetail.ifsc_code || '',
+          },
+          educationDetails: {
+            highestQualification: personalDetail.highest_education || '',
+            university: personalDetail.university_name || '',
+            passingYear: personalDetail.passing_year || '',
+          },
+          previousExperience: {
+            companyName: personalDetail.last_company_name || '',
+            role: personalDetail.role_designation || '',
+            duration: personalDetail.duration || '',
+          },
+          otherDocuments: personalDetail.other_documents_url || '',
+          verificationStatus: personalDetail.verification_status || 'PENDING',
+          rejectComment: '',
+        })
+
+        // If data exists, show preview mode
+        if (Object.keys(data).length > 0) {
+          setPreviewMode(true)
+        }
+      } catch (err: any) {
+        if (err?.response?.status !== 404) { // Ignore 404 as it just means no profile yet
+          toast.error(err?.response?.data?.error || 'Failed to fetch profile')
+        }
+      }
+    }
+
+    fetchPersonalDetails()
   }, [])
 
-  function handleInputChange(section: string, field: string, value: string) {
+  function handleInputChange(section: keyof typeof profile, field: string, value: string) {
     setProfile((prev) => ({
       ...prev,
       [section]: {
-        ...prev[section as keyof typeof prev],
+        ...prev[section],
         [field]: value,
       },
     }))
@@ -79,26 +131,35 @@ export default function Profile() {
     }))
   }
 
-  // ✅ API integrated submit handler
-  async function handleSubmit(e: React.FormEvent) {
+  // ✅ API integrated submit handler with userId from auth
+  async function handleSubmit(e: React.FormEvent) {debugger
     e.preventDefault()
     try {
+      const user = getUser() // ✅ get logged-in user info
+      const userId = user?.id // ✅ extract userId
+
+      // Build payload using the exact field names from the API response
       const payload = {
-        aadhaar_number: profile.adharCardDetails.adharNumber || '',
-        aadhaar_name: profile.adharCardDetails.adharName || '',
-        bank_name: profile.bankDetails.bankName || '',
-        account_number: profile.bankDetails.accountNumber || '',
-        ifsc_code: profile.bankDetails.ifscCode || '',
-        highest_qualification: profile.educationDetails.highestQualification || '',
-        university: profile.educationDetails.university || '',
-        passing_year: profile.educationDetails.passingYear || '',
-        previous_company: profile.previousExperience.companyName || '',
-        previous_role: profile.previousExperience.role || '',
-        previous_duration: profile.previousExperience.duration || '',
-        other_documents: profile.otherDocuments || '',
+        adhar_card_no: profile.adharCardDetails.adharNumber || undefined,
+        pan_card_no: profile.adharCardDetails.panNumber || undefined,
+        bank_name: profile.bankDetails.bankName || undefined,
+        account_no: profile.bankDetails.accountNumber || undefined,
+        ifsc_code: profile.bankDetails.ifscCode || undefined,
+        highest_education: profile.educationDetails.highestQualification || undefined,
+        university_name: profile.educationDetails.university || undefined,
+        passing_year: profile.educationDetails.passingYear || undefined,
+        last_company_name: profile.previousExperience.companyName || undefined,
+        role_designation: profile.previousExperience.role || undefined,
+        duration: profile.previousExperience.duration || undefined,
+        other_documents_url: profile.otherDocuments || undefined,
+        // Keep these fields as they are in the API
+        verification_status: 'PENDING',
+        source: 'Portal',
+        current_stage: 'New'
       }
 
-      await api.post('/api/onboarding-details', payload) // ✅ POST request to backend
+      // Update personal details for the current user (PUT will create if missing on the server)
+      await api.put(`/api/personaldetails/${userId}`, payload)
       toast.success('Profile saved and sent for verification')
       setPreviewMode(true)
       setOpenForm(false)
@@ -168,9 +229,9 @@ export default function Profile() {
                 className="rounded-md border border-gray-300 px-4 py-3 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-300 text-lg"
               />
               <Input
-                placeholder="Name on Adhar Card"
-                value={profile.adharCardDetails.adharName || ''}
-                onChange={(e) => handleInputChange('adharCardDetails', 'adharName', e.target.value)}
+                placeholder="PAN Card No"
+                value={profile.adharCardDetails.panNumber || ''}
+                onChange={(e) => handleInputChange('adharCardDetails', 'panNumber', e.target.value)}
                 className="rounded-md border border-gray-300 px-4 py-3 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-300 text-lg"
               />
             </div>

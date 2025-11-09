@@ -20,7 +20,7 @@ import Terminations from './pages/interns/Terminations'
 
 import Verification from './pages/subscriptions/Verification'
 import Targets from './pages/performance/Targets'
-import DailyLogs from './pages/performance/DailyLogs'
+import EmployeeTargets from './pages/performance/EmployeeTargets'
 import Evaluation from './pages/performance/Evaluation'
 import Settings from './pages/Settings'
 import Profile from './pages/profile/Profile'
@@ -73,7 +73,7 @@ export default function App() {
                 
                 {/* Performance Routes */}
                 <Route path="/performance/targets" element={<Targets />} />
-                <Route path="/performance/daily" element={<DailyLogs />} />
+                <Route path="/performance/employee_targets" element={<EmployeeTargets />} />
                 <Route path="/performance/evaluation" element={<Evaluation />} />
                 
                 {/* Other Routes */}

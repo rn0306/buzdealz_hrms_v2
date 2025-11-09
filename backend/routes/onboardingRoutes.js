@@ -9,9 +9,6 @@ router.post('/select/:candidateId', auth, checkRole('RECRUITER', 'ADMIN'), Onboa
 // Recruiter creates candidate + user (HR only)
 router.post('/create-candidate', auth, checkRole('RECRUITER', 'ADMIN'), OnboardingController.createCandidate);
 
-// Candidate uploads documents (public, onboarding token)
-router.post('/upload/:candidateId', OnboardingController.uploadDocuments);
-
 // HR verifies documents (HR only)
 router.post('/verify/:candidateId', auth, checkRole('RECRUITER', 'ADMIN'), OnboardingController.verifyDocuments);
 
