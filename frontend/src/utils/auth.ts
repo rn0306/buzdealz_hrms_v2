@@ -1,6 +1,6 @@
 import type { Role } from '../config/menus'
 
-export type SessionUser = { username: string; role: Role; apiToken?: string }
+export type SessionUser = { id: number; username: string; role: Role; apiToken?: string }
 
 const KEY = 'hrms_user'
 

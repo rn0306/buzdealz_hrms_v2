@@ -6,11 +6,11 @@ const { sequelize } = require('./models');
 const authRoutes = require('./routes/authRoutes');
 const onboardingRoutes = require('./routes/onboardingRoutes');
 const candidateRoutes = require('./routes/candidateRoutes');
-const OnboardingDetailRoutes = require("./routes/onboardingDetailRoutes");
+const personalDetailsRoutes = require('./routes/PersonalDetailsRoutes');
 
 const app = express();
 
-// ✅ CORS middleware (safe for Node 22+)
+// ✅ CORS middleware
 app.use(
   cors({
     origin: ['http://localhost:5173'], // your frontend URL
@@ -31,16 +31,23 @@ app.get('/', (req, res) => res.json({ message: 'Buzdealz HRMS API' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/candidates', candidateRoutes);
-app.use("/api/onboarding-details", OnboardingDetailRoutes);
+app.use('/api/personaldetails', personalDetailsRoutes);
 
 const PORT = process.env.PORT || 5000;
 
-// ✅ Start server
+// ✅ Start server with model auto-update (non-destructive)
 (async () => {
   try {
     await sequelize.authenticate();
-    await sequelize.sync();
-    app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+    console.log('✅ Database connected successfully');
+
+    // 🧩 Auto update tables without dropping (safe for development)
+    await sequelize.sync({ alter: true });
+    console.log('🔄 Database schema synced (altered to match models)');
+
+    app.listen(PORT, () =>
+      console.log(`🚀 Server running on http://localhost:${PORT}`)
+    );
   } catch (err) {
     console.error('❌ Unable to start server:', err);
     process.exit(1);

@@ -67,7 +67,7 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
       icon: 'BarChart',
       children: [
         { label: 'Targets', path: '/performance/targets' },
-        { label: 'Daily Logs', path: '/performance/daily' },
+        { label: 'Employee Targets', path: '/performance/employee_targets' },
         { label: 'Evaluation', path: '/performance/evaluation' },
       ],
     },
@@ -126,7 +126,7 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
       icon: 'BarChart',
       children: [
         { label: 'Targets', path: '/performance/targets' },
-        { label: 'Daily Logs', path: '/performance/daily' },
+        { label: 'Employee Targets', path: '/performance/employee_targets' },
         { label: 'Evaluation', path: '/performance/evaluation' },
       ],
     },

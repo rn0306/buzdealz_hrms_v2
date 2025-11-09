@@ -7,9 +7,13 @@ const Target = sequelize.define('Target', {
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true
   },
-  intern_id: {
+  user_id: {
     type: DataTypes.UUID,
-    allowNull: false
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'user_id'
+    }
   },
   target_type: {
     type: DataTypes.STRING(50),

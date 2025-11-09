@@ -7,9 +7,13 @@ const Extension = sequelize.define('Extension', {
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true
   },
-  intern_id: {
+  user_id: {
     type: DataTypes.UUID,
-    allowNull: false
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'user_id'
+    }
   },
   requested_by: {
     type: DataTypes.UUID,

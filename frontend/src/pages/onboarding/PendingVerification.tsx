@@ -51,17 +51,70 @@ export default function PendingVerification() {
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
   const [action, setAction] = useState<'accept' | 'reject' | null>(null)
 
-  async function fetchRows() {
-    setLoading(true)
-    try {
-      const res = await api.get('/api/candidates')
-      setRows(res.data)
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Failed to load candidates')
-    } finally {
-      setLoading(false)
+ async function fetchRows() {
+  setLoading(true)
+  try {
+    const res = await api.get('/api/personaldetails/filled')
+
+    const normalizeVerification = (v: any) => {
+      if (v === undefined || v === null) return undefined
+      const s = String(v).trim()
+      if (!s) return undefined
+      const up = s.toUpperCase()
+      if (up.includes('ACCEPT')) return 'Accepted'
+      if (up.includes('REJECT')) return 'Rejected'
+      if (up.includes('PEND')) return 'Pending'
+      return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
     }
+
+    const normalized = (res.data || []).map((r: any) => {
+      const user = r.user || {}
+
+      return {
+        id: user.id || r.user_id, // ✅ Use user.id for modal etc.
+        full_name: `${user.fname || ''} ${user.mname || ''} ${user.lname || ''}`.trim() || '-',
+        email: user.email || '-',
+        phone: user.phone || '-',
+        source: r.source,
+        current_stage: r.current_stage,
+        verificationStatus: normalizeVerification(r.verification_status),
+        // ✅ Map details for the dialog
+        personalDetails: {
+          fullName: `${user.fname || ''} ${user.mname || ''} ${user.lname || ''}`.trim() || '-',
+          email: user.email || '-',
+          phone: user.phone || '-',
+        },
+        adharCardDetails: {
+          adharNumber: r.adhar_card_no || '-',
+          adharName: user.fname || '-', // or another field if backend has it
+        },
+        bankDetails: {
+          bankName: r.bank_name || '-',
+          accountNumber: r.account_no || '-',
+          ifscCode: r.ifsc_code || '-',
+        },
+        educationDetails: {
+          highestQualification: r.highest_education || '-',
+          university: r.university_name || '-',
+          passingYear: r.passing_year || '-',
+        },
+        previousExperience: {
+          companyName: r.last_company_name || '-',
+          role: r.role_designation || '-',
+          duration: r.duration || '-',
+        },
+        otherDocuments: r.other_documents_url || '-',
+      }
+    })
+
+    setRows(normalized)
+  } catch (err: any) {
+    toast.error(err?.response?.data?.error || 'Failed to load candidates')
+  } finally {
+    setLoading(false)
   }
+}
+
 
   useEffect(() => {
     fetchRows()

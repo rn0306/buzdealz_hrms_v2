@@ -1,13 +1,15 @@
-const { sequelize, Role, syncDatabase } = require('./models');
+const { sequelize, Role } = require('./models');
 
 const setupDatabase = async () => {
   try {
-    // Force sync all models (this will drop existing tables)
-    console.log('Syncing database...');
-    await syncDatabase(true);
+    console.log('⚙️ Starting database setup...');
 
-    console.log('Creating default roles...');
-    // Create default roles
+    // ❗ Use { force: true } ONLY if you want to DROP & RECREATE all tables
+    // Change to { alter: true } to just update structure without losing data
+    await sequelize.sync({ force: true });
+    console.log('✅ Database synchronized (all tables recreated)');
+
+    console.log('📦 Seeding default roles...');
     const roles = [
       {
         code: 'ADMIN',
@@ -37,12 +39,12 @@ const setupDatabase = async () => {
     ];
 
     await Role.bulkCreate(roles);
-    console.log('Default roles created successfully');
+    console.log('✅ Default roles created successfully');
 
-    console.log('Database setup completed successfully!');
+    console.log('🎉 Database setup completed successfully!');
     process.exit(0);
   } catch (error) {
-    console.error('Error setting up database:', error);
+    console.error('❌ Error setting up database:', error);
     process.exit(1);
   }
 };

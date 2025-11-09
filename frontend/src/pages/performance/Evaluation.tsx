@@ -1,92 +1,289 @@
-export default function Evaluation() {
-  return (
-    <section className="space-y-6">
-      <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
-              Performance Evaluation
-            </span>
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Track and manage employee performance evaluations
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-            <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Evaluation
-          </button>
-        </div>
-      </div>
+import React, { useState, useMemo } from "react";
+import Select from "../../components/ui/Select";
+import { Table, THead, TBody, TR, TH, TD } from "../../components/ui/Table";
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <div className="group relative overflow-hidden rounded-xl border bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-md">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-50 text-green-600 transition-colors duration-200 group-hover:bg-green-600 group-hover:text-white">
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="font-medium text-gray-900">Completed</h3>
-              <p className="mt-1 text-2xl font-bold text-gray-900">0</p>
-            </div>
-          </div>
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-green-600 to-emerald-600 transition-transform duration-200 group-hover:scale-100" style={{ transform: 'scaleX(0)', transformOrigin: 'left' }} />
-        </div>
+// Mock Data
+const mockEmployees = [
+  { id: 1, name: "John Doe" },
+  { id: 2, name: "Aarav Singh" },
+  { id: 3, name: "Meera Patel" },
+];
 
-        <div className="group relative overflow-hidden rounded-xl border bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-md">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-yellow-50 text-yellow-600 transition-colors duration-200 group-hover:bg-yellow-600 group-hover:text-white">
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="font-medium text-gray-900">In Progress</h3>
-              <p className="mt-1 text-2xl font-bold text-gray-900">0</p>
-            </div>
-          </div>
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-yellow-600 to-orange-600 transition-transform duration-200 group-hover:scale-100" style={{ transform: 'scaleX(0)', transformOrigin: 'left' }} />
-        </div>
+const mockAssignedTargets = [
+  {
+    id: 1,
+    employeeId: 1,
+    targetDescription: "Increase Smart Invest Plans",
+    startDate: "2025-11-01",
+    endDate: "2025-11-30",
+    status: "In Progress",
+    monthlyPlansCount: 10,
+    smartInvestPlansCount: 15,
+    flexSaverPlansCount: 5,
+  },
+  {
+    id: 2,
+    employeeId: 1,
+    targetDescription: "Boost Flex Saver Subscriptions",
+    startDate: "2025-10-10",
+    endDate: "2025-11-10",
+    status: "Completed",
+    monthlyPlansCount: 5,
+    smartInvestPlansCount: 8,
+    flexSaverPlansCount: 10,
+  },
+  {
+    id: 3,
+    employeeId: 2,
+    targetDescription: "Increase Monthly Plans",
+    startDate: "2025-11-05",
+    endDate: "2025-12-05",
+    status: "Assigned",
+    monthlyPlansCount: 20,
+    smartInvestPlansCount: 0,
+    flexSaverPlansCount: 0,
+  },
+];
 
-        <div className="group relative overflow-hidden rounded-xl border bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-md">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-blue-600 transition-colors duration-200 group-hover:bg-blue-600 group-hover:text-white">
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="font-medium text-gray-900">Upcoming</h3>
-              <p className="mt-1 text-2xl font-bold text-gray-900">0</p>
-            </div>
-          </div>
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600 transition-transform duration-200 group-hover:scale-100" style={{ transform: 'scaleX(0)', transformOrigin: 'left' }} />
-        </div>
-      </div>
-
-      <div className="rounded-xl border bg-white shadow-sm">
-        <div className="border-b border-gray-200 px-6 py-4">
-          <h2 className="font-semibold text-gray-900">Recent Evaluations</h2>
-        </div>
-        <div className="p-6">
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-50">
-              <svg className="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            </div>
-            <h3 className="mt-4 text-lg font-medium text-gray-900">No evaluations yet</h3>
-            <p className="mt-2 text-sm text-gray-500">Get started by creating a new evaluation.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-  )
+// Helpers
+function calculateProgress(target: any): number {
+  const start = new Date(target.startDate);
+  const end = new Date(target.endDate);
+  const today = new Date();
+  const total = end.getTime() - start.getTime();
+  const done = today.getTime() - start.getTime();
+  return Math.min(Math.max((done / total) * 100, 0), 100);
 }
 
+function getStatusColor(status: string): string {
+  switch (status) {
+    case "Completed":
+      return "bg-green-100 text-green-700";
+    case "In Progress":
+      return "bg-yellow-100 text-yellow-700";
+    case "Assigned":
+      return "bg-blue-100 text-blue-700";
+    case "Overdue":
+      return "bg-red-100 text-red-700";
+    default:
+      return "bg-gray-100 text-gray-700";
+  }
+}
 
+const EmployeeTargetProgress: React.FC = () => {
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | "">("");
+
+  // Filter assigned targets for selected employee
+  const filteredTargets = useMemo(() => {
+    if (!selectedEmployeeId) return [];
+    const today = new Date();
+    return mockAssignedTargets.filter((t) => {
+      if (t.employeeId !== selectedEmployeeId) return false;
+      // Update status for "Overdue" if endDate has passed and not completed
+      if (
+        new Date(t.endDate) < today &&
+        t.status !== "Completed" &&
+        t.status !== "Overdue"
+      ) {
+        t.status = "Overdue"; // directly mutate mock data here just for demo
+      }
+      return true;
+    });
+  }, [selectedEmployeeId]);
+
+  // Status counts
+  const statusCounts = useMemo(() => {
+    const counts = {
+      Completed: 0,
+      "In Progress": 0,
+      Assigned: 0,
+      Overdue: 0,
+    };
+    filteredTargets.forEach((t) => {
+      counts[t.status] = (counts[t.status] || 0) + 1;
+    });
+    return counts;
+  }, [filteredTargets]);
+
+  const totalTargets = filteredTargets.length;
+  const completed = statusCounts.Completed;
+  const progressPercent = totalTargets > 0 ? (completed / totalTargets) * 100 : 0;
+
+  return (
+    <div className="p-6 bg-white rounded shadow">
+      {/* Header Section */}
+      <header className="mb-6">
+        <h1 className="text-2xl font-semibold">Employee Target Progress</h1>
+        <p className="text-gray-500">
+          Track and analyze target achievements by employee
+        </p>
+      </header>
+
+      {/* Filters Section */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:space-x-4">
+        <Select
+          label="Select Employee"
+          id="employee-select"
+          value={selectedEmployeeId}
+          onChange={(e) => setSelectedEmployeeId(Number(e.target.value))}
+          className="w-full sm:w-72 mb-4 sm:mb-0"
+        >
+          <option value="">-- Select Employee --</option>
+          {mockEmployees.map((emp) => (
+            <option key={emp.id} value={emp.id}>
+              {emp.name}
+            </option>
+          ))}
+        </Select>
+
+        {/* Placeholder for Month/ Date Range filter */}
+        <div className="w-full sm:w-48 border border-gray-300 rounded px-3 py-2 text-gray-400 cursor-not-allowed select-none">
+          Date Range Filter (Coming soon)
+        </div>
+      </div>
+
+      {selectedEmployeeId && (
+        <>
+          {/* Summary Cards Section */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="p-4 rounded shadow bg-green-50">
+              <h3 className="text-green-700 font-semibold">🟢 Completed</h3>
+              <p className="text-3xl font-bold">{statusCounts.Completed}</p>
+            </div>
+            <div className="p-4 rounded shadow bg-yellow-50">
+              <h3 className="text-yellow-700 font-semibold">🟡 In Progress</h3>
+              <p className="text-3xl font-bold">{statusCounts["In Progress"]}</p>
+            </div>
+            <div className="p-4 rounded shadow bg-blue-50">
+              <h3 className="text-blue-700 font-semibold">🔵 Assigned</h3>
+              <p className="text-3xl font-bold">{statusCounts.Assigned}</p>
+            </div>
+            <div className="p-4 rounded shadow bg-red-50">
+              <h3 className="text-red-700 font-semibold">🔴 Overdue</h3>
+              <p className="text-3xl font-bold">{statusCounts.Overdue}</p>
+            </div>
+          </div>
+
+          {/* Employee Summary Bar */}
+          <div className="mb-6">
+            <p className="mb-2 font-semibold">
+              {
+                mockEmployees.find((e) => e.id === selectedEmployeeId)?.name ||
+                ""
+              }{" "}
+              has completed {completed} / {totalTargets} targets (
+              {progressPercent.toFixed(0)}%) overall.
+            </p>
+            <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500"
+                style={{ width: `${progressPercent}%` }}
+                title={`${progressPercent.toFixed(0)}% completed`}
+              />
+            </div>
+          </div>
+
+          {/* Detailed Progress Cards */}
+          <div className="space-y-4 mb-6">
+            {filteredTargets.map((t) => {
+              const progress = calculateProgress(t);
+              const remainingDays = Math.max(
+                0,
+                Math.floor(
+                  (new Date(t.endDate).getTime() - new Date().getTime()) /
+                    (1000 * 60 * 60 * 24)
+                )
+              );
+
+              return (
+                <div
+                  key={t.id}
+                  className="p-4 rounded shadow border border-gray-200"
+                  aria-label={`Target progress: ${t.targetDescription}`}
+                >
+                  <h3 className="font-semibold text-lg mb-1">
+                    🎯 Target: {t.targetDescription}
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-2">
+                    📅 {t.startDate} - {t.endDate} &nbsp;&nbsp;|&nbsp;&nbsp;{" "}
+                    {remainingDays} days remaining ({progress.toFixed(0)}% done)
+                  </p>
+                  <div className="mb-2">
+                    <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500"
+                        style={{ width: `${progress}%` }}
+                        title={`${progress.toFixed(0)}% completed`}
+                      />
+                    </div>
+                  </div>
+                  <span
+                    className={`inline-block px-2 py-1 rounded text-xs font-semibold ${getStatusColor(
+                      t.status
+                    )}`}
+                  >
+                    {t.status}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Table View */}
+          <Table>
+            <THead>
+              <TR>
+                <TH>Target Description</TH>
+                <TH>Start Date</TH>
+                <TH>End Date</TH>
+                <TH>Days Remaining</TH>
+                <TH>Status</TH>
+                <TH>Progress (%)</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {filteredTargets.length === 0 ? (
+                <TR>
+                  <TD colSpan={6} className="text-center py-4 text-gray-500">
+                    No targets found.
+                  </TD>
+                </TR>
+              ) : (
+                filteredTargets.map((t) => {
+                  const progress = calculateProgress(t);
+                  const remainingDays = Math.max(
+                    0,
+                    Math.floor(
+                      (new Date(t.endDate).getTime() - new Date().getTime()) /
+                        (1000 * 60 * 60 * 24)
+                    )
+                  );
+                  return (
+                    <TR key={t.id}>
+                      <TD>{t.targetDescription}</TD>
+                      <TD>{t.startDate}</TD>
+                      <TD>{t.endDate}</TD>
+                      <TD>{remainingDays}</TD>
+                      <TD>
+                        <span
+                          className={`inline-block px-2 py-1 rounded text-xs font-semibold ${getStatusColor(
+                            t.status
+                          )}`}
+                        >
+                          {t.status}
+                        </span>
+                      </TD>
+                      <TD>{progress.toFixed(0)}%</TD>
+                    </TR>
+                  );
+                })
+              )}
+            </TBody>
+          </Table>
+        </>
+      )}
+    </div>
+  );
+};
+
+export default EmployeeTargetProgress;
