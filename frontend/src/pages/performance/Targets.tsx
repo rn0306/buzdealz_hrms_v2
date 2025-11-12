@@ -1,6 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import {
+  getTargetsMaster,
+  createTargetMaster,
+  updateTargetMaster,
+  deleteTargetMaster,
+} from "../../lib/api";
 import Button from "../../components/ui/Button";
-import Input from "../../components/ui/Input";
 import Dialog from "../../components/ui/Dialog";
 import { Table, THead, TBody, TR, TH, TD } from "../../components/ui/Table";
 import { toast } from "sonner";
@@ -12,7 +17,7 @@ type Target = {
   smart_invest_plans_count: number;
   flex_saver_plans_count: number;
   deadline_days: number;
-  status: 'Active' | 'Completed' | 'On Hold' | 'Cancelled';
+  status: 'Active' | 'Inactive';
 };
 
 type FormState = Partial<Target>;
@@ -23,21 +28,37 @@ const initialFormState: FormState = {
   smart_invest_plans_count: 0,
   flex_saver_plans_count: 0,
   deadline_days: 0,
-  status: 'Active'
+  status: 'Active',
 };
 
 const STATUS_COLORS = {
   Active: 'bg-green-100 text-green-800 border-green-200',
-  Completed: 'bg-blue-100 text-blue-800 border-blue-200',
-  'On Hold': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  Cancelled: 'bg-red-100 text-red-800 border-red-200'
+  Inactive: 'bg-red-100 text-red-800 border-red-200',
 };
+
 
 export default function TargetMaster() {
   const [targets, setTargets] = useState<Target[]>([]);
   const [openForm, setOpenForm] = useState(false);
   const [editing, setEditing] = useState<Target | null>(null);
   const [form, setForm] = useState<FormState>(initialFormState);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchTargets();
+  }, []);
+
+  async function fetchTargets() {
+    setLoading(true);
+    try {
+      const res = await getTargetsMaster();
+      setTargets(res.data);
+    } catch (err: any) {
+      toast.error("Failed to fetch targets");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function handleChange(field: keyof FormState, value: string | number) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -71,31 +92,25 @@ export default function TargetMaster() {
     return true;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!validateForm()) return;
 
-    const newTarget: Target = {
-      id: editing?.id || Date.now().toString(),
-      target_description: form.target_description!,
-      monthly_plans_count: form.monthly_plans_count!,
-      smart_invest_plans_count: form.smart_invest_plans_count!,
-      flex_saver_plans_count: form.flex_saver_plans_count!,
-      deadline_days: form.deadline_days!,
-      status: form.status!
-    };
-
-    if (editing) {
-      setTargets((prev) => prev.map((t) => (t.id === editing.id ? newTarget : t)));
-      toast.success("Target updated successfully");
-    } else {
-      setTargets((prev) => [...prev, newTarget]);
-      toast.success("Target added successfully");
+    try {
+      if (editing) {
+        await updateTargetMaster(editing.id, form);
+        toast.success("Target updated successfully");
+      } else {
+        await createTargetMaster(form);
+        toast.success("Target added successfully");
+      }
+      fetchTargets();
+      setOpenForm(false);
+      setEditing(null);
+      setForm(initialFormState);
+    } catch (err: any) {
+      toast.error("Failed to save target");
     }
-
-    setOpenForm(false);
-    setEditing(null);
-    setForm(initialFormState);
   }
 
   function handleEdit(target: Target) {
@@ -104,10 +119,15 @@ export default function TargetMaster() {
     setOpenForm(true);
   }
 
-  function handleDelete(targetId: string) {
+  async function handleDelete(targetId: string) {
     if (window.confirm("Are you sure you want to delete this target?")) {
-      setTargets((prev) => prev.filter((t) => t.id !== targetId));
-      toast.success("Target deleted successfully");
+      try {
+        await deleteTargetMaster(targetId);
+        toast.success("Target deleted successfully");
+        fetchTargets();
+      } catch (err: any) {
+        toast.error("Failed to delete target");
+      }
     }
   }
 
@@ -140,7 +160,13 @@ export default function TargetMaster() {
               </TR>
             </THead>
             <TBody>
-              {targets.length === 0 ? (
+              {loading ? (
+                <TR>
+                  <TD align="center" className="py-8" style={{textAlign: 'center'}} colSpan={7}>
+                    <div className="text-gray-500">Loading targets...</div>
+                  </TD>
+                </TR>
+              ) : targets.length === 0 ? (
                 <TR>
                   <TD align="center" className="py-8" style={{textAlign: 'center'}} colSpan={7}>
                     <div className="text-gray-500">No targets found</div>
@@ -283,9 +309,7 @@ export default function TargetMaster() {
               required
             >
               <option value="Active">Active</option>
-              <option value="Completed">Completed</option>
-              <option value="On Hold">On Hold</option>
-              <option value="Cancelled">Cancelled</option>
+              <option value="Inactive">Inactive</option>
             </select>
           </div>
 

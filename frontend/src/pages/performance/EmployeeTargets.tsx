@@ -1,123 +1,155 @@
 import React, { useState, useEffect, useMemo } from "react";
 import Button from "../../components/ui/Button";
-import Input from "../../components/ui/Input";
 import Dialog from "../../components/ui/Dialog";
 import { Table, THead, TBody, TR, TH, TD } from "../../components/ui/Table";
-import Select from "../../components/ui/Select";
 import { toast } from "sonner";
+import {
+  getEmployeeTargets,
+  createEmployeeTarget,
+  updateEmployeeTarget,
+  deleteEmployeeTarget,
+  getActiveTargets,
+  getActiveUsers,
+} from "../../lib/api";
 
 type AssignedTarget = {
   id: string;
-  employeeId: string;
-  employeeName: string;
-  targetId: string;
-  targetDescription: string;
-  startDate: string; // ISO date string
-  endDate: string; // ISO date string
-  status: "Assigned" | "In Progress" | "Completed" | "Overdue";
+  user_id: string;
+  target_id: string;
+  assigned_by: string;
+  start_date: string;
+  end_date: string;
+  monthly_target: number;
+  smart_invest_target: number;
+  flex_saver_target: number;
   remarks?: string;
+  status: "Assigned" | "In Progress" | "Completed" | "Overdue";
 };
 
 type Target = {
   id: string;
   target_description: string;
   deadline_days: number;
-  status: "Active" | "Inactive"; // for filtering
+  status: "Active" | "Inactive";
+  // added counts from your API payload
+  monthly_plans_count?: number;
+  smart_invest_plans_count?: number;
+  flex_saver_plans_count?: number;
 };
 
 type Employee = {
   id: string;
   name: string;
+  email: string;
 };
-
-// Mock data for employees and targets (simulate API fetch)
-const mockEmployees: Employee[] = [
-  { id: "e01", name: "Alice Johnson" },
-  { id: "e02", name: "Bob Smith" },
-  { id: "e03", name: "Charlie Brown" },
-];
-
-const mockTargets: Target[] = [
-  { id: "t01", target_description: "Increase sales by 20%", deadline_days: 30, status: "Active" },
-  { id: "t02", target_description: "Improve customer satisfaction", deadline_days: 45, status: "Active" },
-  { id: "t03", target_description: "Reduce operational costs", deadline_days: 60, status: "Inactive" },
-];
 
 export default function AssignTarget() {
   const [assignedTargets, setAssignedTargets] = useState<AssignedTarget[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [targets, setTargets] = useState<Target[]>([]);
   const [openForm, setOpenForm] = useState(false);
   const [editing, setEditing] = useState<AssignedTarget | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState<Partial<AssignedTarget>>({
-    employeeId: "",
-    targetId: "",
-    startDate: "",
-    endDate: "",
+    user_id: "",
+    target_id: "",
+    assigned_by: "",
+    start_date: "",
+    end_date: "",
     status: "Assigned",
     remarks: "",
+    monthly_target: 0,
+    smart_invest_target: 0,
+    flex_saver_target: 0,
   });
 
-  // Filter to show only active targets for selection
-  const activeTargets = mockTargets.filter((t) => t.status === "Active");
-
-  // Populate employee name and target description from selections
+  // Fetch all data on mount
   useEffect(() => {
-    if (form.employeeId) {
-      const emp = mockEmployees.find((e) => e.id === form.employeeId);
-      if (emp) setForm((f) => ({ ...f, employeeName: emp.name }));
-    } else {
-      setForm((f) => ({ ...f, employeeName: "" }));
+    fetchAllData();
+  }, []);
+
+  async function fetchAllData() {
+    setLoading(true);
+    try {
+      const [targetsRes, usersRes, assignedRes] = await Promise.all([
+        getActiveTargets(),
+        getActiveUsers(),
+        getEmployeeTargets(),
+      ]);
+      setTargets(targetsRes.data || []);
+      setEmployees(usersRes.data || []);
+      setAssignedTargets(assignedRes.data || []);
+    } catch (err: any) {
+      toast.error("Failed to fetch data");
+    } finally {
+      setLoading(false);
     }
-  }, [form.employeeId]);
+  }
 
+  // Auto-calculate end date based on deadline_days
   useEffect(() => {
-    if (form.targetId) {
-      const target = activeTargets.find((t) => t.id === form.targetId);
-      if (target && form.startDate) {
-        const start = new Date(form.startDate);
+    if (form.target_id && form.start_date) {
+      const target = targets.find((t) => t.id === form.target_id);
+      if (target) {
+        const start = new Date(form.start_date);
         const end = new Date(start);
         end.setDate(start.getDate() + target.deadline_days);
         setForm((f) => ({
           ...f,
-          targetDescription: target.target_description,
-          endDate: end.toISOString().substring(0, 10),
+          end_date: end.toISOString().substring(0, 10),
         }));
-      } else if (target) {
+      }
+    }
+  }, [form.target_id, form.start_date, targets]);
+
+  // NEW: when a target is selected, populate the 3 count fields (read-only)
+  useEffect(() => {
+    if (form.target_id) {
+      const target = targets.find((t) => t.id === form.target_id);
+      if (target) {
         setForm((f) => ({
           ...f,
-          targetDescription: target.target_description,
-          endDate: "",
+          monthly_target: Number(target.monthly_plans_count ?? 0),
+          smart_invest_target: Number(target.smart_invest_plans_count ?? 0),
+          flex_saver_target: Number(target.flex_saver_plans_count ?? 0),
+        }));
+      } else {
+        // reset to 0 if target not found
+        setForm((f) => ({
+          ...f,
+          monthly_target: 0,
+          smart_invest_target: 0,
+          flex_saver_target: 0,
         }));
       }
     } else {
-      setForm((f) => ({ ...f, targetDescription: "", endDate: "" }));
+      // no target selected -> reset counts
+      setForm((f) => ({
+        ...f,
+        monthly_target: 0,
+        smart_invest_target: 0,
+        flex_saver_target: 0,
+      }));
     }
-  }, [form.targetId, form.startDate, activeTargets]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.target_id, targets]);
 
-  // Handle form input changes
-  function handleChange(field: keyof AssignedTarget, value: string) {
+  function handleChange(field: keyof AssignedTarget, value: string | number) {
     setForm((f) => ({ ...f, [field]: value }));
   }
 
-  // Validate form inputs
   function validateForm(): boolean {
-    if (!form.employeeId) {
+    if (!form.user_id) {
       toast.error("Employee is required");
       return false;
     }
-    if (!form.targetId) {
+    if (!form.target_id) {
       toast.error("Target is required");
       return false;
     }
-    if (!form.startDate) {
+    if (!form.start_date) {
       toast.error("Start Date is required");
-      return false;
-    }
-    const startDateObj = new Date(form.startDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (startDateObj < today) {
-      toast.error("Start Date cannot be in the past");
       return false;
     }
     if (!form.status) {
@@ -127,72 +159,62 @@ export default function AssignTarget() {
     return true;
   }
 
-  // Handle submit (add or update assigned target)
-  function handleSubmit() {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     if (!validateForm()) return;
 
-    if (editing) {
-      setAssignedTargets((prev) =>
-        prev.map((a) =>
-          a.id === editing.id
-            ? ({
-                ...a,
-                ...form,
-              } as AssignedTarget)
-            : a
-        )
-      );
-      toast.success("Assigned target updated successfully");
-    } else {
-      const newAssignedTarget: AssignedTarget = {
-        id: Date.now().toString(),
-        employeeId: form.employeeId!,
-        employeeName: form.employeeName || "",
-        targetId: form.targetId!,
-        targetDescription: form.targetDescription || "",
-        startDate: form.startDate!,
-        endDate: form.endDate || "",
-        status: form.status as AssignedTarget["status"],
-        remarks: form.remarks,
-      };
-      setAssignedTargets((prev) => [...prev, newAssignedTarget]);
-      toast.success("Target assigned successfully");
+    try {debugger
+      if (editing) {
+        await updateEmployeeTarget(editing.id, form);
+        toast.success("Target assignment updated successfully");
+      } else {
+        await createEmployeeTarget(form);
+        toast.success("Target assigned successfully");
+      }
+      fetchAllData();
+      setOpenForm(false);
+      setEditing(null);
+      setForm({
+        user_id: "",
+        target_id: "",
+        assigned_by: "",
+        start_date: "",
+        end_date: "",
+        status: "Assigned",
+        remarks: "",
+        monthly_target: 0,
+        smart_invest_target: 0,
+        flex_saver_target: 0,
+      });
+    } catch (err: any) {
+      toast.error("Failed to save target assignment");
     }
-
-    setOpenForm(false);
-    setEditing(null);
-    setForm({
-      employeeId: "",
-      targetId: "",
-      startDate: "",
-      endDate: "",
-      status: "Assigned",
-      remarks: "",
-    });
   }
 
-  // Edit assigned target handler
   function handleEdit(assigned: AssignedTarget) {
     setEditing(assigned);
     setForm(assigned);
     setOpenForm(true);
   }
 
-  // Delete assigned target handler
-  function handleDelete(id: string) {
-    if (window.confirm("Are you sure you want to delete this assigned target?")) {
-      setAssignedTargets((prev) => prev.filter((a) => a.id !== id));
-      toast.success("Assigned target deleted successfully");
+  async function handleDelete(id: string) {
+    if (window.confirm("Are you sure you want to delete this target assignment?")) {
+      try {
+        await deleteEmployeeTarget(id);
+        toast.success("Target assignment deleted successfully");
+        fetchAllData();
+      } catch (err: any) {
+        toast.error("Failed to delete target assignment");
+      }
     }
   }
 
-  // Utility for color-coded status badge
   function getStatusBadgeColor(status: AssignedTarget["status"]) {
     const colors = {
       Completed: "bg-green-100 text-green-800 border-green-200",
       "In Progress": "bg-blue-100 text-blue-800 border-blue-200",
       Assigned: "bg-purple-100 text-purple-800 border-purple-200",
-      Overdue: "bg-red-100 text-red-800 border-red-200"
+      Overdue: "bg-red-100 text-red-800 border-red-200",
     };
     return colors[status];
   }
@@ -210,6 +232,26 @@ export default function AssignTarget() {
     return counts;
   }, [assignedTargets]);
 
+  // Helper to get employee name from ID
+  const getEmployeeName = (userId: string) => {
+    const emp = employees.find((e) => e.id === userId);
+    return emp?.name || "Unknown";
+  };
+
+  // Helper to get target description from ID
+  const getTargetDescription = (targetId: string) => {
+    const target = targets.find((t) => t.id === targetId);
+    return target?.target_description || "Unknown";
+  };
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center h-screen">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-8 space-y-8">
       {/* Header Section */}
@@ -219,7 +261,22 @@ export default function AssignTarget() {
           <p className="mt-2 text-gray-600">Track and manage employee performance targets</p>
         </div>
         <Button
-          onClick={() => setOpenForm(true)}
+          onClick={() => {
+            setEditing(null);
+            setForm({
+              user_id: "",
+              target_id: "",
+              assigned_by: "",
+              start_date: "",
+              end_date: "",
+              status: "Assigned",
+              remarks: "",
+              monthly_target: 0,
+              smart_invest_target: 0,
+              flex_saver_target: 0,
+            });
+            setOpenForm(true);
+          }}
           className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all"
         >
           Assign New Target
@@ -228,7 +285,6 @@ export default function AssignTarget() {
 
       {/* Status Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {/* Completed Card */}
         <div className="bg-green-50 border border-green-200 rounded-xl p-6 shadow-sm">
           <div className="flex justify-between items-start">
             <div>
@@ -239,7 +295,6 @@ export default function AssignTarget() {
           </div>
         </div>
 
-        {/* In Progress Card */}
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 shadow-sm">
           <div className="flex justify-between items-start">
             <div>
@@ -250,7 +305,6 @@ export default function AssignTarget() {
           </div>
         </div>
 
-        {/* Assigned Card */}
         <div className="bg-purple-50 border border-purple-200 rounded-xl p-6 shadow-sm">
           <div className="flex justify-between items-start">
             <div>
@@ -261,7 +315,6 @@ export default function AssignTarget() {
           </div>
         </div>
 
-        {/* Overdue Card */}
         <div className="bg-red-50 border border-red-200 rounded-xl p-6 shadow-sm">
           <div className="flex justify-between items-start">
             <div>
@@ -289,10 +342,25 @@ export default function AssignTarget() {
             <TBody>
               {assignedTargets.length === 0 ? (
                 <TR>
-                  <TD style={{textAlign: 'center'}} className="py-8">
+                  <TD style={{ textAlign: "center" }} className="py-8" colSpan={5}>
                     <div className="text-gray-500">No targets assigned yet</div>
                     <Button
-                      onClick={() => setOpenForm(true)}
+                      onClick={() => {
+                        setEditing(null);
+                        setForm({
+                          user_id: "",
+                          target_id: "",
+                          assigned_by: "",
+                          start_date: "",
+                          end_date: "",
+                          status: "Assigned",
+                          remarks: "",
+                          monthly_target: 0,
+                          smart_invest_target: 0,
+                          flex_saver_target: 0,
+                        });
+                        setOpenForm(true);
+                      }}
                       className="mt-4 text-indigo-600 hover:text-indigo-800"
                     >
                       Assign your first target
@@ -303,15 +371,15 @@ export default function AssignTarget() {
                 assignedTargets.map((assigned) => (
                   <TR key={assigned.id} className="hover:bg-gray-50">
                     <TD>
-                      <div className="font-medium text-gray-900">{assigned.employeeName}</div>
+                      <div className="font-medium text-gray-900">{getEmployeeName(assigned.user_id)}</div>
                     </TD>
                     <TD>
-                      <div className="max-w-md">{assigned.targetDescription}</div>
+                      <div className="max-w-md">{getTargetDescription(assigned.target_id)}</div>
                     </TD>
                     <TD>
                       <div className="text-sm text-gray-600">
-                        {new Date(assigned.startDate).toLocaleDateString()} -{" "}
-                        {new Date(assigned.endDate).toLocaleDateString()}
+                        {new Date(assigned.start_date).toLocaleDateString()} -{" "}
+                        {new Date(assigned.end_date).toLocaleDateString()}
                       </div>
                     </TD>
                     <TD>
@@ -353,17 +421,21 @@ export default function AssignTarget() {
           setOpenForm(false);
           setEditing(null);
           setForm({
-            employeeId: "",
-            targetId: "",
-            startDate: "",
-            endDate: "",
+            user_id: "",
+            target_id: "",
+            assigned_by: "",
+            start_date: "",
+            end_date: "",
             status: "Assigned",
             remarks: "",
+            monthly_target: 0,
+            smart_invest_target: 0,
+            flex_saver_target: 0,
           });
         }}
-        title={editing ? "Edit Assigned Target" : "Assign New Target"}
+        title={editing ? "Edit Target Assignment" : "Assign New Target"}
       >
-        <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-6">
               <div className="space-y-2">
@@ -371,15 +443,15 @@ export default function AssignTarget() {
                   Select Employee <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={form.employeeId || ""}
-                  onChange={(e) => handleChange("employeeId", e.target.value)}
+                  value={form.user_id || ""}
+                  onChange={(e) => handleChange("user_id", e.target.value)}
                   required
                   className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                 >
                   <option value="">Choose an employee</option>
-                  {mockEmployees.map((e) => (
+                  {employees.map((e) => (
                     <option key={e.id} value={e.id}>
-                      {e.name}
+                      {e.name} ({e.email})
                     </option>
                   ))}
                 </select>
@@ -390,13 +462,13 @@ export default function AssignTarget() {
                   Select Target <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={form.targetId || ""}
-                  onChange={(e) => handleChange("targetId", e.target.value)}
+                  value={form.target_id || ""}
+                  onChange={(e) => handleChange("target_id", e.target.value)}
                   required
                   className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                 >
                   <option value="">Choose a target</option>
-                  {activeTargets.map((t) => (
+                  {targets.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.target_description}
                     </option>
@@ -412,9 +484,8 @@ export default function AssignTarget() {
                 </label>
                 <input
                   type="date"
-                  value={form.startDate || ""}
-                  onChange={(e) => handleChange("startDate", e.target.value)}
-                  min={new Date().toISOString().split("T")[0]}
+                  value={form.start_date || ""}
+                  onChange={(e) => handleChange("start_date", e.target.value)}
                   className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                   required
                 />
@@ -424,9 +495,47 @@ export default function AssignTarget() {
                 <label className="block font-medium text-gray-700">End Date</label>
                 <input
                   type="date"
-                  value={form.endDate || ""}
+                  value={form.end_date || ""}
                   className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-gray-50"
                   disabled
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-2">
+                <label className="block font-medium text-gray-700">Monthly Target</label>
+                <input
+                  type="number"
+                  value={form.monthly_target ?? 0}
+                  // READ-ONLY now: populated from selected target's monthly_plans_count
+                  readOnly
+                  className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  min={0}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="block font-medium text-gray-700">Smart Invest Target</label>
+                <input
+                  type="number"
+                  value={form.smart_invest_target ?? 0}
+                  // READ-ONLY now: populated from selected target's smart_invest_plans_count
+                  readOnly
+                  className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  min={0}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="block font-medium text-gray-700">Flex Saver Target</label>
+                <input
+                  type="number"
+                  value={form.flex_saver_target ?? 0}
+                  // READ-ONLY now: populated from selected target's flex_saver_plans_count
+                  readOnly
+                  className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  min={0}
                 />
               </div>
             </div>
@@ -468,12 +577,16 @@ export default function AssignTarget() {
                 setOpenForm(false);
                 setEditing(null);
                 setForm({
-                  employeeId: "",
-                  targetId: "",
-                  startDate: "",
-                  endDate: "",
+                  user_id: "",
+                  target_id: "",
+                  assigned_by: "",
+                  start_date: "",
+                  end_date: "",
                   status: "Assigned",
                   remarks: "",
+                  monthly_target: 0,
+                  smart_invest_target: 0,
+                  flex_saver_target: 0,
                 });
               }}
               className="px-4 py-2"
@@ -484,7 +597,7 @@ export default function AssignTarget() {
               type="submit"
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all"
             >
-              {editing ? "Update Target" : "Assign Target"}
+              {editing ? "Update Assignment" : "Assign Target"}
             </Button>
           </div>
         </form>

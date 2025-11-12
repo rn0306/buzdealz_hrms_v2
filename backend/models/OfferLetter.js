@@ -7,7 +7,7 @@ const OfferLetter = sequelize.define('OfferLetter', {
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true
   },
-  candidate_id: {
+  user_id: {
     type: DataTypes.UUID,
     allowNull: false
   },

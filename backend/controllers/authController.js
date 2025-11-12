@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Role = require('../models/Role');
+const { PersonalDetail } = require('../models');
 
 class AuthController {
   
@@ -117,6 +118,39 @@ class AuthController {
     } catch (error) {
       console.error('Profile Error:', error);
       res.status(400).json({ error: error.message });
+    }
+  }
+
+  // Get all active and verified users for dropdown (employees/candidates)
+  static async getActiveVerifiedUsers(req, res) {
+    try {
+      const users = await User.findAll({
+         include: [
+          { model: PersonalDetail, as: 'personalDetail',
+            where: { verification_status: 'VERIFIED' }, attributes: ['verification_status']
+           },
+          {
+            model: Role,
+            as: 'Role',
+            where: { code: 'INTERN' },
+            attributes: ['code']
+          }
+        ],
+        attributes: ['id', 'fname', 'lname', 'email', 'joining_date'],
+        order: [['fname', 'ASC']],
+        raw: true,
+      });
+      // Map to include full name for frontend
+      const mappedUsers = users.map((u) => ({
+        id: u.id,
+        name: `${u.fname} ${u.lname || ''}`.trim(),
+        email: u.email,
+        joining_date: u.joining_date,
+      }));
+      res.json(mappedUsers);
+    } catch (error) {
+      console.error('Get Users Error:', error);
+      res.status(500).json({ error: error.message });
     }
   }
 }

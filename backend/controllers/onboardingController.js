@@ -130,6 +130,81 @@ class OnboardingController {
     }
   }
 
+  // 3b. HR verifies documents and updates candidate details (joining date, confirmation date)
+  static async verifyAndUpdateCandidate(req, res) {
+    try {
+      const { candidateId } = req.params;
+      const { verificationStatus, joiningDate, confirmationDate, rejectComment } = req.body;
+     // Validate inputs
+      if (!['Accepted', 'Rejected'].includes(verificationStatus)) {
+        return res.status(400).json({ error: 'Invalid verification status' });
+      }
+
+      // Find user
+      const user = await User.findByPk(candidateId);
+      if (!user) return res.status(404).json({ error: 'Candidate (user) not found' });
+
+      // Find personal detail
+      let detail = await PersonalDetail.findOne({ where: { user_id: candidateId } });
+      if (!detail) return res.status(404).json({ error: 'Candidate details not found' });
+
+      // Update verification status
+      detail.verification_status = verificationStatus === 'Accepted' ? 'VERIFIED' : 'REJECTED';
+      detail.verified_by = req.user.id;
+      detail.verified_at = new Date();
+
+      // Store rejection comment if rejected
+      if (verificationStatus === 'Rejected' && rejectComment) {
+        detail.rejection_comment = rejectComment;
+      }
+
+      // Update user with joining date and confirmation date if accepted
+      if (verificationStatus === 'Accepted') {
+        if (joiningDate) {
+          user.joining_date = joiningDate;
+        }
+        if (confirmationDate) {
+          user.confirmation_date = confirmationDate;
+        }
+        user.updated_by = req.user.id;
+        await user.save();
+
+        // Update personal detail stage to Onboarded
+        detail.current_stage = 'Onboarded';
+
+        // Create offer letter (placeholder URL)
+        // await OfferLetter.create({
+        //   candidate_id: candidateId,
+        //   offer_url: `/offers/offer_${candidateId}.pdf`,
+        //   issued_by: req.user.id
+        // });
+      } else {
+        // If rejected, update stage accordingly
+        detail.current_stage = 'Rejected';
+      }
+
+      detail.updated_by = req.user.id;
+      await detail.save();
+
+      res.json({
+        message: `Candidate verification ${verificationStatus.toLowerCase()}`,
+        candidate: {
+          id: user.id,
+          full_name: `${user.fname} ${user.lname}`,
+          email: user.email,
+          joining_date: user.joining_date,
+          confirmation_date: user.confirmation_date,
+          verification_status: detail.verification_status,
+          current_stage: detail.current_stage
+        }
+      });
+      
+    } catch (err) {
+      
+      res.status(500).json({ error: err.message });
+    }
+  }
+
   // 4. Candidate accepts offer
   static async acceptOffer(req, res) {
     try {

@@ -6,7 +6,6 @@ import Dialog from '../../components/ui/Dialog'
 import { Table, THead, TBody, TR, TH, TD } from '../../components/ui/Table'
 import { toast } from 'sonner'
 
-
 type Candidate = {
   id: string
   full_name: string
@@ -18,9 +17,14 @@ type Candidate = {
   current_stage?: string
 }
 
-
 type FormState = Partial<Candidate> & { resume_url?: string }
 
+type EmailTemplate = {
+  id: string
+  name: string
+  subject: string
+  body_html: string
+}
 
 export default function Candidates() {
   const [rows, setRows] = useState<Candidate[]>([])
@@ -31,23 +35,30 @@ export default function Candidates() {
   const [form, setForm] = useState<FormState>({ full_name: '', email: '' })
   const [openDeleteId, setOpenDeleteId] = useState<string | null>(null)
 
+  // ✉️ Mail Dialog States
+  const [openMailDialog, setOpenMailDialog] = useState(false)
+  const [mailCandidate, setMailCandidate] = useState<Candidate | null>(null)
+  const [templates, setTemplates] = useState<EmailTemplate[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null)
+  const [sendingMail, setSendingMail] = useState(false)
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase()
-    return rows.filter((r) => [r.full_name, r.email, r.phone, r.source].some((v) => (v || '').toLowerCase().includes(q)))
+    return rows.filter((r) =>
+      [r.full_name, r.email, r.phone, r.source].some((v) =>
+        (v || '').toLowerCase().includes(q)
+      )
+    )
   }, [rows, query])
-
 
   async function fetchRows() {
     setLoading(true)
     try {
       const res = await api.get('/api/candidates')
-      // Backend may return fname and lname instead of full_name — compute full_name here
       const normalized = (res.data || []).map((r: any) => ({
         ...r,
-        // Ensure full_name is available (from fname+lname if missing)
         full_name: r.full_name || `${(r.fname || '').trim()} ${(r.lname || '').trim()}`.trim(),
-        // current_stage and source may be stored on personalDetail in backend responses
         current_stage: r.current_stage || r.personalDetail?.current_stage || r.current_stage,
         source: r.source || r.personalDetail?.source || r.source,
       }))
@@ -59,11 +70,9 @@ export default function Candidates() {
     }
   }
 
-
   useEffect(() => {
     fetchRows()
   }, [])
-
 
   function openCreate() {
     setEditing(null)
@@ -71,31 +80,25 @@ export default function Candidates() {
     setOpenForm(true)
   }
 
-
   function openEdit(row: Candidate) {
     setEditing(row)
     setForm({ ...row })
     setOpenForm(true)
   }
 
-
   async function submitForm(e: React.FormEvent) {
     e.preventDefault()
     try {
       if (editing) {
-      
-        // If status/current_stage was changed, persist it on the personal details resource
         if (form.current_stage !== undefined) {
           try {
             await api.put(`/api/personaldetails/${editing.id}`, { current_stage: form.current_stage })
           } catch (err: any) {
-            // non-fatal: still allow main update to succeed but surface a warning
             toast.warning('Candidate updated but failed to update stage: ' + (err?.response?.data?.error || err.message || ''))
           }
         }
         toast.success('Candidate updated')
       } else {
-        // Create via onboarding endpoint
         const payload = {
           full_name: form.full_name,
           email: form.email,
@@ -113,7 +116,6 @@ export default function Candidates() {
     }
   }
 
-
   async function confirmDelete() {
     if (!openDeleteId) return
     try {
@@ -126,41 +128,87 @@ export default function Candidates() {
     }
   }
 
-
   const statusOptions = ['New', 'Shortlisted', 'Rejected', 'On Hold']
 
+  // 📨 Open mail dialog
+  async function openMail(row: Candidate) {
+    setMailCandidate(row)
+    setOpenMailDialog(true)
+    setSelectedTemplateId('')
+    setSelectedTemplate(null)
+    try {
+      const res = await api.get('/api/email-templates')
+      setTemplates(res.data.data || [])
+    } catch (err: any) {
+      toast.error('Failed to load templates')
+    }
+  }
+
+  // 📨 Handle template change
+  function handleTemplateChange(id: string) {
+    setSelectedTemplateId(id)
+    const t = templates.find((x) => x.id === id) || null
+    setSelectedTemplate(t)
+  }
+
+  // 📨 Send mail API call
+  async function sendMailToCandidate() {
+    if (!mailCandidate || !selectedTemplate) {
+      toast.error('Please select a template')
+      return
+    }
+    setSendingMail(true)
+  try {
+    await api.post('/api/email-templates/send', {
+      template_id: selectedTemplate.id,
+      recipient_email: mailCandidate.email,
+      recipient_name: mailCandidate.full_name,
+      data: {
+        full_name: mailCandidate.full_name,
+        email: mailCandidate.email,
+        phone: mailCandidate.phone || '',
+        password: mailCandidate.fname?.toLocaleLowerCase() + '123$' || '',
+      },
+    })
+
+    toast.success(`Mail sent to ${mailCandidate.full_name}`)
+    setOpenMailDialog(false)
+  } catch (err: any) {
+    toast.error(err?.response?.data?.message || 'Failed to send email')
+  } finally {
+    setSendingMail(false)
+  }
+}
 
   return (
     <section className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-left">
           <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
-              Recruitment Candidate
-            </span>
+            Recruitment Candidate
+          </span>
         </h1>
         <Button className="rounded-md px-4 py-2 shadow-md" onClick={openCreate}>
           Add Candidate
         </Button>
       </div>
 
-
       <div className="flex items-center gap-3">
-        <Input 
-          placeholder="Search candidates..." 
-          value={query} 
-          onChange={(e) => setQuery(e.target.value)} 
+        <Input
+          placeholder="Search candidates..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
           className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
         />
-        <Button 
-          variant="outline" 
-          onClick={fetchRows} 
+        <Button
+          variant="outline"
+          onClick={fetchRows}
           disabled={loading}
           className="rounded-md border border-gray-300 px-4 py-2 shadow-sm"
         >
           {loading ? 'Loading...' : 'Refresh'}
         </Button>
       </div>
-
 
       <div className="rounded-2xl border border-gray-200 bg-white p-0 shadow-lg overflow-hidden">
         <Table>
@@ -188,6 +236,9 @@ export default function Candidates() {
                     <Button variant="danger" className="rounded-md px-3 py-1 shadow" onClick={() => setOpenDeleteId(r.id)}>
                       Delete
                     </Button>
+                    <Button variant="primary" className="rounded-md px-3 py-1 shadow" onClick={() => openMail(r)}>
+                      Send Mail
+                    </Button>
                   </div>
                 </TD>
               </TR>
@@ -203,43 +254,42 @@ export default function Candidates() {
         </Table>
       </div>
 
-
       {/* Create/Edit Dialog */}
       <Dialog open={openForm} onClose={() => setOpenForm(false)} title={editing ? 'Edit Candidate' : 'Add Candidate'}>
         <form className="space-y-4" onSubmit={submitForm}>
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Full Name</label>
-            <Input 
-              value={form.full_name || ''} 
-              onChange={(e) => setForm({ ...form, full_name: e.target.value })} 
-              required 
+            <Input
+              value={form.full_name || ''}
+              onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+              required
               className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
             />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
-            <Input 
-              type="email" 
-              value={form.email || ''} 
-              onChange={(e) => setForm({ ...form, email: e.target.value })} 
-              required 
+            <Input
+              type="email"
+              value={form.email || ''}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              required
               className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Phone</label>
-              <Input 
-                value={form.phone || ''} 
-                onChange={(e) => setForm({ ...form, phone: e.target.value })} 
+              <Input
+                value={form.phone || ''}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
               />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Source</label>
-              <Input 
-                value={form.source || ''} 
-                onChange={(e) => setForm({ ...form, source: e.target.value })} 
+              <Input
+                value={form.source || ''}
+                onChange={(e) => setForm({ ...form, source: e.target.value })}
                 className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
               />
             </div>
@@ -247,9 +297,9 @@ export default function Candidates() {
           {!editing && (
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Resume URL</label>
-              <Input 
-                value={form.resume_url || ''} 
-                onChange={(e) => setForm({ ...form, resume_url: e.target.value })} 
+              <Input
+                value={form.resume_url || ''}
+                onChange={(e) => setForm({ ...form, resume_url: e.target.value })}
                 className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
               />
             </div>
@@ -281,7 +331,6 @@ export default function Candidates() {
         </form>
       </Dialog>
 
-
       {/* Delete Confirmation */}
       <Dialog open={!!openDeleteId} onClose={() => setOpenDeleteId(null)} title="Delete Candidate">
         <p className="text-sm text-gray-700">
@@ -291,9 +340,59 @@ export default function Candidates() {
           <Button variant="outline" onClick={() => setOpenDeleteId(null)} className="rounded-md px-4 py-2 shadow-sm">
             Cancel
           </Button>
-          <Button variant="danger" onClick={confirmDelete} className="rounded-md px-4 py-2 shadow-md bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800">
+          <Button
+            variant="danger"
+            onClick={confirmDelete}
+            className="rounded-md px-4 py-2 shadow-md bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800"
+          >
             Delete
           </Button>
+        </div>
+      </Dialog>
+
+      {/* 📨 Send Mail Dialog */}
+      <Dialog open={openMailDialog} onClose={() => setOpenMailDialog(false)} title={`Send Mail to ${mailCandidate?.full_name || ''}`}>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Select Email Template</label>
+            <select
+              value={selectedTemplateId}
+              onChange={(e) => handleTemplateChange(e.target.value)}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-400"
+            >
+              <option value="">-- Select Template --</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {selectedTemplate && (
+            <div className="p-3 border rounded-md bg-gray-50">
+              <h3 className="font-semibold text-blue-900 mb-1">Subject:</h3>
+              <p className="text-gray-700 mb-2">{selectedTemplate.subject.replace('{{full_name}}', mailCandidate?.full_name || '')}</p>
+              <h3 className="font-semibold text-blue-900 mb-1">Body Preview:</h3>
+              <div
+                className="text-sm text-gray-800"
+                dangerouslySetInnerHTML={{
+                  __html: selectedTemplate.body_html.replace('{{full_name}}', mailCandidate?.full_name || '')
+                                                    .replace('{{email}}', mailCandidate?.email || '')
+                                                    .replace('{{password}}', mailCandidate?.fname?.toLocaleLowerCase() + '123$' || '')
+                }}
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-3">
+            <Button variant="outline" onClick={() => setOpenMailDialog(false)} className="rounded-md px-4 py-2 shadow-sm">
+              Cancel
+            </Button>
+            <Button onClick={sendMailToCandidate} disabled={sendingMail} className="rounded-md px-4 py-2 shadow-md">
+              {sendingMail ? 'Sending...' : 'Send Mail'}
+            </Button>
+          </div>
         </div>
       </Dialog>
     </section>

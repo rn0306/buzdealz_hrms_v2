@@ -12,6 +12,9 @@ router.post('/create-candidate', auth, checkRole('RECRUITER', 'ADMIN'), Onboardi
 // HR verifies documents (HR only)
 router.post('/verify/:candidateId', auth, checkRole('RECRUITER', 'ADMIN'), OnboardingController.verifyDocuments);
 
+// HR verifies documents and updates candidate with joining date and confirmation date (HR only)
+router.post('/verify-and-update/:candidateId', auth, checkRole('RECRUITER', 'ADMIN'), OnboardingController.verifyAndUpdateCandidate);
+
 // Candidate accepts offer (public, onboarding token)
 router.post('/accept-offer/:candidateId', OnboardingController.acceptOffer);
 

@@ -1,4 +1,4 @@
-import type { HTMLAttributes } from 'react'
+import type { HTMLAttributes, ThHTMLAttributes, TdHTMLAttributes } from 'react'
 
 interface TableProps extends HTMLAttributes<HTMLTableElement> {
   className?: string
@@ -62,7 +62,7 @@ export function TR({ children, className = '', ...props }: TRProps) {
   )
 }
 
-interface THProps extends HTMLAttributes<HTMLTableCellElement> {
+interface THProps extends ThHTMLAttributes<HTMLTableCellElement> {
   className?: string
 }
 
@@ -77,7 +77,7 @@ export function TH({ children, className = '', ...props }: THProps) {
   )
 }
 
-interface TDProps extends HTMLAttributes<HTMLTableCellElement> {
+interface TDProps extends TdHTMLAttributes<HTMLTableCellElement> {
   className?: string
 }
 
