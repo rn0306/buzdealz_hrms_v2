@@ -14,7 +14,7 @@ class PersonalDetailsController {
 
       const details = await PersonalDetail.findAll({
         where,
-        include: [{ model: User, as: 'user', attributes: ['id', 'email', 'fname', 'mname', 'lname', 'phone'] }],
+        include: [{ model: User, as: 'user'}],
         order: [['created_at', 'DESC']],
         limit: Number(limit),
         offset,
@@ -38,7 +38,7 @@ class PersonalDetailsController {
           {
             model: User,
             as: 'user',
-            attributes: ['id', 'email', 'fname', 'mname', 'lname', 'phone'],
+            attributes: ['id', 'email', 'fname', 'mname', 'lname', 'phone','joining_date','confirmation_date'],
           },
         ],
         order: [['created_at', 'DESC']],
@@ -86,65 +86,80 @@ class PersonalDetailsController {
   }
 
   // Update personal detail
-  static async update(req, res) {
-    try {
-      const { id } = req.params;
-      const payload = req.body || {};
+ 
+static async update(req, res) {
+  try {
+    const { id } = req.params; // user_id
+    const payload = req.body || {};
 
-      const user = await User.findByPk(id);
-      if (!user) return res.status(404).json({ error: 'Candidate (user) not found' });
+    const user = await User.findByPk(id);
+    if (!user) return res.status(404).json({ error: 'Candidate (user) not found' });
 
-      let detail = await PersonalDetail.findOne({ where: { user_id: id } });
-      if (!detail) {
-        detail = await PersonalDetail.create({
-          user_id: id,
-          created_by: req.user?.id || null,
-          updated_by: req.user?.id || null,
-        });
-      }
-
-      // ✅ Update both mapped & direct DB field names
-      const allowed = [
-        'adhar_card_no',
-        'pan_card_no',
-        'bank_name',
-        'account_no',
-        'branch_name',
-        'ifsc_code',
-        'highest_education',
-        'university_name',
-        'passing_year',
-        'last_company_name',
-        'role_designation',
-        'duration',
-        'other_documents_url',
-        'id_proof_url',
-        'verification_status',
-        'verified_by',
-        'verified_at',
-        'source',
-        'current_stage',
-      ];
-
-      for (const key of allowed) {
-        if (payload[key] !== undefined) {
-          detail[key] = payload[key];
-        }
-      }
-
-      // Update optional user fields if present
-      if (payload.date_of_birth !== undefined) user.date_of_birth = payload.date_of_birth;
-      if (payload.joining_date !== undefined) user.joining_date = payload.joining_date;
-      if (payload.departure_date !== undefined) user.date_of_departure = payload.departure_date;
-
-      await detail.save();
-      await user.save();
-
-      res.json({ message: 'Personal detail updated successfully', personalDetail: detail });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
+    let detail = await PersonalDetail.findOne({ where: { user_id: id } });
+    if (!detail) {
+      detail = await PersonalDetail.create({
+        user_id: id,
+        created_by: req.user?.id || null,
+        updated_by: req.user?.id || null,
+      });
     }
+
+    // ✅ Allowed Personal Detail fields
+    const allowedPersonalFields = [
+      'adhar_card_no',
+      'pan_card_no',
+      'bank_name',
+      'account_no',
+      'branch_name',
+      'ifsc_code',
+      'highest_education',
+      'university_name',
+      'passing_year',
+      'last_company_name',
+      'role_designation',
+      'duration',
+      'other_documents_url',
+      'id_proof_url',
+      'verification_status',
+      'verified_by',
+      'verified_at',
+      'source',
+      'current_stage',
+    ];
+
+    for (const key of allowedPersonalFields) {
+      if (payload[key] !== undefined) {
+        detail[key] = payload[key];
+      }
+    }
+
+    // ✅ Update User basic details
+    if (payload.fname !== undefined) user.fname = payload.fname;
+    if (payload.lname !== undefined) user.lname = payload.lname;
+    if (payload.email !== undefined) user.email = payload.email;
+    if (payload.phone !== undefined) user.phone = payload.phone;
+
+    // ✅ Update date-related fields
+    if (payload.joining_date !== undefined) user.joining_date = payload.joining_date;
+    if (payload.confirmation_date !== undefined) user.confirmation_date = payload.confirmation_date;
+    if (payload.date_of_birth !== undefined) user.date_of_birth = payload.date_of_birth;
+
+    user.updated_by = req.user?.id || user.updated_by;
+    detail.updated_by = req.user?.id || detail.updated_by;
+
+    await user.save();
+    await detail.save();
+
+    res.json({
+      message: 'Profile updated successfully',
+      user,
+      personalDetail: detail,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
+}
 
   static async remove(req, res) {
     try {

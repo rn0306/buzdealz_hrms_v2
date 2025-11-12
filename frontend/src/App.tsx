@@ -18,10 +18,14 @@ import ActiveInterns from './pages/interns/ActiveInterns'
 import Extensions from './pages/interns/Extensions'
 import Terminations from './pages/interns/Terminations'
 
+import AddSubscription from './pages/subscriptions/AddSubscription'
+import SubscriptionList from './pages/subscriptions/SubscriptionList'
 import Verification from './pages/subscriptions/Verification'
 import Targets from './pages/performance/Targets'
 import EmployeeTargets from './pages/performance/EmployeeTargets'
 import Evaluation from './pages/performance/Evaluation'
+import EmailTemplates from './pages/emailTemplates/EmailTemplates'
+import Reports from './pages/reports/Reports'
 import Settings from './pages/Settings'
 import Profile from './pages/profile/Profile'
 
@@ -69,6 +73,8 @@ export default function App() {
                 <Route path="/interns/terminations" element={<Terminations />} />
                 
                 {/* Subscription Routes */}
+                <Route path="/subscriptions/add" element={<AddSubscription />} />
+                <Route path="/subscriptions/list" element={<SubscriptionList />} />
                 <Route path="/subscriptions/verify" element={<Verification />} />
                 
                 {/* Performance Routes */}
@@ -77,6 +83,8 @@ export default function App() {
                 <Route path="/performance/evaluation" element={<Evaluation />} />
                 
                 {/* Other Routes */}
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/email-templates" element={<EmailTemplates />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/profile" element={<Profile />} />
                 

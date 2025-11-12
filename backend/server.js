@@ -7,6 +7,12 @@ const authRoutes = require('./routes/authRoutes');
 const onboardingRoutes = require('./routes/onboardingRoutes');
 const candidateRoutes = require('./routes/candidateRoutes');
 const personalDetailsRoutes = require('./routes/PersonalDetailsRoutes');
+const emailTemplateRoutes = require('./routes/emailTemplateRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
+const internSubscriptionRoutes = require('./routes/internSubscriptionRoutes');
+
+const targetsMasterRoutes = require('./routes/targetsMasterRoutes');
+const employeeTargetsRoutes = require('./routes/employeeTargetsRoutes');
 
 const app = express();
 
@@ -32,6 +38,12 @@ app.use('/api/auth', authRoutes);
 app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/personaldetails', personalDetailsRoutes);
+app.use('/api/email-templates', emailTemplateRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/intern-subscriptions', internSubscriptionRoutes);
+
+app.use('/api/targets-master', targetsMasterRoutes);
+app.use('/api/employee-targets', employeeTargetsRoutes);
 
 const PORT = process.env.PORT || 5000;
 

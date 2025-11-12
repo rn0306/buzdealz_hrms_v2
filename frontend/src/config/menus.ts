@@ -73,6 +73,7 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
     },
     { label: 'Documents', icon: 'FileText', path: '/documents' },
     { label: 'Reports', icon: 'PieChart', path: '/reports' },
+    { label: 'Email Templates', icon: 'FileText', path: '/email-templates' },
     { label: 'Settings', icon: 'Settings', path: '/settings' },
   ],
   intern: [
