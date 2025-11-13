@@ -59,7 +59,7 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
       children: [
         { label: 'Add Subscription', path: '/subscriptions/add' },
         { label: 'My Subscriptions', path: '/subscriptions/list' },
-        { label: 'Verification', path: '/subscriptions/verify' },
+        // { label: 'Verification', path: '/subscriptions/verify' },
       ],
     },
     {

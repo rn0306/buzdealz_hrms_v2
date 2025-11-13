@@ -6,14 +6,15 @@ const User = require('./User');
 const Role = require('./Role');
 const OfferLetter = require('./OfferLetter');
 const subscription = require('./Subscription');
-const Target = require('./Target');
 const Evaluation = require('./Evaluation');
 const Extension = require('./Extension');
 const Termination = require('./Termination');
 const ActivityLog = require('./ActivityLog');
 const PersonalDetail = require('./PersonalDetail');
 const InternSubscription = require('./InternSubscription');
-const TargetsMaster = require('./targets_master'); // ✅ proper model init
+
+const Plans = require('./Plans');                  // ✅ NEW PLANS MODEL
+const TargetsMaster = require('./targets_master'); // updated dynamic plans
 const EmployeeTarget = require('./employee_targets');
 const EmployeeTargetProgress = require('./employee_target_progress');
 
@@ -29,10 +30,6 @@ Role.hasMany(User, { foreignKey: 'role_id' });
 OfferLetter.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 OfferLetter.belongsTo(User, { foreignKey: 'issued_by', as: 'issuer' });
 User.hasMany(OfferLetter, { foreignKey: 'user_id', as: 'offerLetters' });
-
-// 🎯 Target (old target table)
-Target.belongsTo(User, { foreignKey: 'user_id' });
-User.hasMany(Target, { foreignKey: 'user_id' });
 
 // 🧾 Evaluations
 Evaluation.belongsTo(User, { foreignKey: 'user_id' });
@@ -59,28 +56,41 @@ PersonalDetail.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 User.hasOne(PersonalDetail, { foreignKey: 'user_id', as: 'personalDetail' });
 
 // ==========================================
-// 🎯 New Targeting Module Associations
+// 🎯 Targeting Module Associations
 // ==========================================
 
-// 🔹 1. EmployeeTarget ↔ User (who gets the target)
+// 🔹 EmployeeTarget → User (target assigned to)
 EmployeeTarget.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 User.hasMany(EmployeeTarget, { foreignKey: 'user_id', as: 'employeeTargets' });
 
-// 🔹 2. EmployeeTarget ↔ TargetsMaster (target definition)
+// 🔹 EmployeeTarget → TargetsMaster (target definition)
 EmployeeTarget.belongsTo(TargetsMaster, { foreignKey: 'target_id', as: 'target' });
 TargetsMaster.hasMany(EmployeeTarget, { foreignKey: 'target_id', as: 'assignedTargets' });
 
-// 🔹 3. EmployeeTarget ↔ EmployeeTargetProgress (progress logs)
-EmployeeTarget.hasMany(EmployeeTargetProgress, { foreignKey: 'employee_target_id', as: 'progressRecords' });
-EmployeeTargetProgress.belongsTo(EmployeeTarget, { foreignKey: 'employee_target_id', as: 'employeeTarget' });
+// 🔹 EmployeeTarget → EmployeeTargetProgress
+EmployeeTarget.hasMany(EmployeeTargetProgress, {
+  foreignKey: 'employee_target_id',
+  as: 'progressRecords'
+});
+EmployeeTargetProgress.belongsTo(EmployeeTarget, {
+  foreignKey: 'employee_target_id',
+  as: 'employeeTarget'
+});
 
-// 🔹 4. (Optional) EmployeeTarget.assigned_by → User (manager who assigned it)
+// 🔹 Assigned by (optional)
 EmployeeTarget.belongsTo(User, { foreignKey: 'assigned_by', as: 'assigner' });
 User.hasMany(EmployeeTarget, { foreignKey: 'assigned_by', as: 'assignedTargets' });
 
 // ==========================================
+// 🔥 NEW ASSOCIATIONS FOR PLANS
+// ==========================================
 
-// 🧩 Function to sync database
+// No direct FK relation needed because plans are stored in TargetsMaster.plans (JSON)
+// But you can still manage standalone plan CRUD
+
+// ==========================================
+
+// 🧩 Sync function
 const syncDatabase = async (force = false) => {
   try {
     await sequelize.sync({ force });
@@ -97,15 +107,15 @@ module.exports = {
   Role,
   OfferLetter,
   subscription,
-  Target,
   Evaluation,
   Extension,
   Termination,
   ActivityLog,
   PersonalDetail,
+  Plans,                // ✅ NEW EXPORT
   TargetsMaster,
   EmployeeTarget,
   EmployeeTargetProgress,
   InternSubscription,
-  syncDatabase
+  syncDatabase,
 };

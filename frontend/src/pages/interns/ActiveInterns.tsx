@@ -266,12 +266,7 @@ const ActiveInterns: React.FC = () => {
           <h1 className="text-2xl font-semibold text-gray-900">Active Interns</h1>
           <p className="text-gray-500 mt-1">Review, monitor and verify interns in real time.</p>
         </div>
-        <div className="mt-4 md:mt-0 flex items-center gap-2">
-          <Button variant="default" onClick={() => setShowAddModal(true)}>
-            <Plus className="inline mr-1" size={18} />
-            Add Employee
-          </Button>
-        </div>
+        
       </div>
 
       {/* Top Summary Cards */}
@@ -300,14 +295,7 @@ const ActiveInterns: React.FC = () => {
               onChange={e => setSearch(e.target.value)}
             />
           </div>
-          <Select id="role-filter" label="Role" className="min-w-[160px]" value={roleFilter} onChange={e => setRoleFilter(e.target.value)}>
-            <option value="">All Roles</option>
-            {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-          </Select>
-          <Select id="dept-filter" label="Department" className="min-w-[160px]" value={""} onChange={() => {}}>
-            <option value="">All Departments</option>
-            {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-          </Select>
+          
       </div>
 
       {/* Interns Table */}
@@ -341,13 +329,7 @@ const ActiveInterns: React.FC = () => {
                     <Button className="p-2 rounded-full" variant="outline" onClick={() => setShowEditModal(intern)}>
                       <Edit size={18} />
                     </Button>
-                    <Button
-                      className="p-2 rounded-full"
-                      variant="outline"
-                      onClick={() => setInterns(list => list.filter(i => i.id !== intern.id))}
-                    >
-                      <Power size={18} className="text-red-500" />
-                    </Button>
+                    
                   </div>
                 </TD>
               </TR>

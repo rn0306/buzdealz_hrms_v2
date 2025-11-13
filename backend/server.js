@@ -10,7 +10,7 @@ const personalDetailsRoutes = require('./routes/PersonalDetailsRoutes');
 const emailTemplateRoutes = require('./routes/emailTemplateRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const internSubscriptionRoutes = require('./routes/internSubscriptionRoutes');
-
+const plansRoutes = require('./routes/plansRoutes');
 const targetsMasterRoutes = require('./routes/targetsMasterRoutes');
 const employeeTargetsRoutes = require('./routes/employeeTargetsRoutes');
 
@@ -41,7 +41,7 @@ app.use('/api/personaldetails', personalDetailsRoutes);
 app.use('/api/email-templates', emailTemplateRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/intern-subscriptions', internSubscriptionRoutes);
-
+app.use('/api/plans', plansRoutes);
 app.use('/api/targets-master', targetsMasterRoutes);
 app.use('/api/employee-targets', employeeTargetsRoutes);
 
