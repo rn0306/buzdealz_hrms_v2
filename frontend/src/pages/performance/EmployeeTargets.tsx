@@ -70,22 +70,25 @@ export default function AssignTarget() {
   }, []);
 
   async function fetchAllData() {
-    setLoading(true);
-    try {
-      const [targetsRes, usersRes, assignedRes] = await Promise.all([
-        getActiveTargets(),
-        getActiveUsers(),
-        getEmployeeTargets(),
-      ]);
-      setTargets(targetsRes.data || []);
-      setEmployees(usersRes.data || []);
-      setAssignedTargets(assignedRes.data || []);
-    } catch (err: any) {
-      toast.error("Failed to fetch data");
-    } finally {
-      setLoading(false);
-    }
+  setLoading(true);
+  try {
+    const [targetsRes, usersRes, assignedRes] = await Promise.all([
+      getActiveTargets(),
+      getActiveUsers(),
+      getEmployeeTargets(),
+    ]);
+    // Backend returns RAW arrays
+    setTargets(Array.isArray(targetsRes.data.data) ? targetsRes.data.data : []);
+    setEmployees(Array.isArray(usersRes.data) ? usersRes.data : []);
+    setAssignedTargets(Array.isArray(assignedRes.data) ? assignedRes.data : []);
+
+  } catch {
+    toast.error("Failed to fetch data");
+  } finally {
+    setLoading(false);
   }
+}
+
 
   // Auto-calculate end date based on deadline_days
   useEffect(() => {
@@ -103,37 +106,6 @@ export default function AssignTarget() {
     }
   }, [form.target_id, form.start_date, targets]);
 
-  // NEW: when a target is selected, populate the 3 count fields (read-only)
-  useEffect(() => {
-    if (form.target_id) {
-      const target = targets.find((t) => t.id === form.target_id);
-      if (target) {
-        setForm((f) => ({
-          ...f,
-          monthly_target: Number(target.monthly_plans_count ?? 0),
-          smart_invest_target: Number(target.smart_invest_plans_count ?? 0),
-          flex_saver_target: Number(target.flex_saver_plans_count ?? 0),
-        }));
-      } else {
-        // reset to 0 if target not found
-        setForm((f) => ({
-          ...f,
-          monthly_target: 0,
-          smart_invest_target: 0,
-          flex_saver_target: 0,
-        }));
-      }
-    } else {
-      // no target selected -> reset counts
-      setForm((f) => ({
-        ...f,
-        monthly_target: 0,
-        smart_invest_target: 0,
-        flex_saver_target: 0,
-      }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.target_id, targets]);
 
   function handleChange(field: keyof AssignedTarget, value: string | number) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -238,11 +210,15 @@ export default function AssignTarget() {
     return emp?.name || "Unknown";
   };
 
-  // Helper to get target description from ID
-  const getTargetDescription = (targetId: string) => {
-    const target = targets.find((t) => t.id === targetId);
-    return target?.target_description || "Unknown";
-  };
+  const getTargetDescription = (assigned: AssignedTarget) => {
+  if (assigned.target?.target_description) {
+    return assigned.target.target_description;
+  }
+
+  const t = targets.find((t) => t.id === assigned.target_id);
+  return t?.target_description || "Unknown";
+};
+
 
   if (loading) {
     return (
@@ -374,7 +350,8 @@ export default function AssignTarget() {
                       <div className="font-medium text-gray-900">{getEmployeeName(assigned.user_id)}</div>
                     </TD>
                     <TD>
-                      <div className="max-w-md">{getTargetDescription(assigned.target_id)}</div>
+                     <div className="max-w-md">{getTargetDescription(assigned)}</div>
+
                     </TD>
                     <TD>
                       <div className="text-sm text-gray-600">
@@ -498,44 +475,6 @@ export default function AssignTarget() {
                   value={form.end_date || ""}
                   className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-gray-50"
                   disabled
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <label className="block font-medium text-gray-700">Monthly Target</label>
-                <input
-                  type="number"
-                  value={form.monthly_target ?? 0}
-                  // READ-ONLY now: populated from selected target's monthly_plans_count
-                  readOnly
-                  className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  min={0}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="block font-medium text-gray-700">Smart Invest Target</label>
-                <input
-                  type="number"
-                  value={form.smart_invest_target ?? 0}
-                  // READ-ONLY now: populated from selected target's smart_invest_plans_count
-                  readOnly
-                  className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  min={0}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="block font-medium text-gray-700">Flex Saver Target</label>
-                <input
-                  type="number"
-                  value={form.flex_saver_target ?? 0}
-                  // READ-ONLY now: populated from selected target's flex_saver_plans_count
-                  readOnly
-                  className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  min={0}
                 />
               </div>
             </div>

@@ -42,3 +42,10 @@ export const deleteEmployeeTarget = (id: string) => api.delete(`/api/employee-ta
 // Dropdown APIs for Employee Targets
 export const getActiveTargets = () => api.get('/api/targets-master/active/list');
 export const getActiveUsers = () => api.get('/api/auth/users/active');
+
+
+// Plans APIs
+export const getPlansMaster = () => api.get('/api/plans');
+export const createPlanMaster = (data: any) => api.post('/api/plans', data);
+export const updatePlanMaster = (id: string, data: any) => api.put(`/api/plans/${id}`, data);
+export const deletePlanMaster = (id: string) => api.delete(`/api/plans/${id}`);

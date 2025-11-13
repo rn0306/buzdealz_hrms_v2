@@ -316,14 +316,14 @@ export default function AddSubscription() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
               <Input className="pl-9" placeholder="Search name or ID" value={search} onChange={e=>setSearch(e.target.value)} />
             </div>
-            <select className="border px-3 py-2 rounded" value={filterStatus} onChange={e=>setFilterStatus(e.target.value as SubmissionStatus | "")}> 
+            {/* <select className="border px-3 py-2 rounded" value={filterStatus} onChange={e=>setFilterStatus(e.target.value as SubmissionStatus | "")}> 
               <option value="">All Statuses</option>
               <option value="Verified">Verified</option>
               <option value="Pending">Pending</option>
               <option value="Duplicate">Duplicate</option>
               <option value="Invalid">Invalid</option>
             </select>
-            <Button variant="outline" className="px-3 py-2" onClick={()=>exportCsv(filtered)}> <Download size={16} className="inline mr-2"/> Export CSV</Button>
+            <Button variant="outline" className="px-3 py-2" onClick={()=>exportCsv(filtered)}> <Download size={16} className="inline mr-2"/> Export CSV</Button> */}
           </div>
         </div>
 

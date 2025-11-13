@@ -39,7 +39,6 @@ exports.create = async (req, res) => {
   try {
      const assigned_by = req.user?.id || null; // or fallback if not logged in
     const data = { ...req.body, assigned_by };
-    console.log('Creating EmployeeTarget with data:', data);
     const created = await EmployeeTarget.create(data);
     res.status(201).json(created);
   } catch (err) {
