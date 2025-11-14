@@ -54,6 +54,7 @@ export default function Candidates() {
 
   async function fetchRows() {
     setLoading(true);
+    setQuery(''); // Clear the search input
     try {
       const res = await api.get("/api/candidates");
       const normalized = (res.data || []).map((r: any) => ({
@@ -100,7 +101,7 @@ export default function Candidates() {
           } catch (err: any) {
             toast.warning(
               "Candidate updated but failed to update stage: " +
-                (err?.response?.data?.error || err.message || "")
+              (err?.response?.data?.error || err.message || "")
             );
           }
         }
@@ -117,7 +118,6 @@ export default function Candidates() {
         toast.success("Candidate created");
       }
       setOpenForm(false);
-      await fetchRows();
     } catch (err: any) {
       toast.error(err?.response?.data?.error || "Operation failed");
     }
@@ -129,7 +129,6 @@ export default function Candidates() {
       await api.delete(`/api/candidates/${openDeleteId}`);
       toast.success("Candidate deleted");
       setOpenDeleteId(null);
-      await fetchRows();
     } catch (err: any) {
       toast.error(err?.response?.data?.error || "Delete failed");
     }
@@ -177,7 +176,6 @@ export default function Candidates() {
           password: mailCandidate.fname?.toLocaleLowerCase() + "123$" || "",
         },
       });
-
       toast.success(`Mail sent to ${mailCandidate.full_name}`);
       setOpenMailDialog(false);
     } catch (err: any) {
@@ -196,37 +194,33 @@ export default function Candidates() {
   }
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-6 space-y-8">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Recruitment Candidates</h1>
-          <p className="mt-2 text-gray-600">Manage all your recruitment candidates here</p>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-semibold text-left">
+          <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            Recruitment Candidate
+          </span>
+        </h1>
+        <div className="flex items-center gap-3 ml-auto">
+          <Input
+            placeholder="Search candidates..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="rounded-lg border border-gray-300 px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+          />
+          <Button
+            variant="outline"
+            onClick={fetchRows}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg border border-gray-300 shadow-sm hover:bg-gray-50"
+          >
+            {loading ? "Loading..." : "Refresh"}
+          </Button>
+          <Button className="rounded-md w-[100%] py-2 shadow-md" onClick={openCreate}>
+            Add Candidate
+          </Button>
         </div>
-        <Button
-          onClick={openCreate}
-          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all"
-        >
-          Add Candidate
-        </Button>
-      </div>
-
-      {/* Search + Refresh */}
-      <div className="flex items-center gap-3">
-        <Input
-          placeholder="Search candidates..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="rounded-lg border border-gray-300 px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-        />
-        <Button
-          variant="outline"
-          onClick={fetchRows}
-          disabled={loading}
-          className="px-4 py-2 rounded-lg border border-gray-300 shadow-sm hover:bg-gray-50"
-        >
-          {loading ? "Loading..." : "Refresh"}
-        </Button>
       </div>
 
       {/* Table */}
@@ -287,72 +281,68 @@ export default function Candidates() {
       </div>
 
       {/* Create/Edit Dialog */}
-      <Dialog
-        open={openForm}
-        onClose={() => setOpenForm(false)}
-        title={editing ? "Edit Candidate" : "Add Candidate"}
-      >
-        <form onSubmit={submitForm} className="space-y-6">
-          <div className="space-y-4">
-            <div>
-              <label className="block font-medium text-gray-700">Full Name</label>
-              <Input
-                value={form.full_name || ""}
-                onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                required
-                className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
+      <Dialog open={openForm} onClose={() => setOpenForm(false)} title={editing ? 'Edit Candidate' : 'Add Candidate'}>
+        <form className="space-y-4" onSubmit={submitForm}>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Full Name</label>
+            <Input
+              value={form.full_name || ''}
+              onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+              required
+              className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+            />
+          </div>
 
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block font-medium text-gray-700">Email</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
               <Input
                 type="email"
-                value={form.email || ""}
+                value={form.email || ''}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 required
-                className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Phone</label>
+              <Input
+                value={form.phone || ''}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Date of Birth</label>
+              <Input
+                type="date"
+                value={form.date_of_birth || ''}
+                onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })}
+                className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block font-medium text-gray-700">Phone</label>
-                <Input
-                  value={form.phone || ""}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-medium text-gray-700">Source</label>
-                <Input
-                  value={form.source || ""}
-                  onChange={(e) => setForm({ ...form, source: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Resume (PDF)</label>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={(e) => setForm({ ...form, resume_file: e.target.files?.[0] || null })}
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              />
             </div>
-
-            {!editing && (
-              <div>
-                <label className="block font-medium text-gray-700">Resume URL</label>
-                <Input
-                  value={form.resume_url || ""}
-                  onChange={(e) => setForm({ ...form, resume_url: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
-            )}
-
+          </div>
+          <div className="grid grid-cols-2 gap-4">
             {editing && (
               <div>
-                <label className="block font-medium text-gray-700">Status</label>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Status</label>
                 <select
-                  value={form.current_stage || "New"}
+                  value={form.current_stage || 'New'}
                   onChange={(e) => setForm({ ...form, current_stage: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className="block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 >
                   {statusOptions.map((opt) => (
                     <option key={opt} value={opt}>
@@ -363,21 +353,12 @@ export default function Candidates() {
               </div>
             )}
           </div>
-
-          <div className="flex justify-end gap-3 pt-4 border-t">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpenForm(false)}
-              className="px-4 py-2"
-            >
+          <div className="flex justify-end gap-3 pt-3">
+            <Button variant="outline" type="button" onClick={() => setOpenForm(false)} className="rounded-md px-4 py-2 shadow-sm">
               Cancel
             </Button>
-            <Button
-              type="submit"
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all"
-            >
-              {editing ? "Update" : "Create"}
+            <Button type="submit" className="rounded-md px-4 py-2 shadow-md">
+              {editing ? 'Save' : 'Create'}
             </Button>
           </div>
         </form>

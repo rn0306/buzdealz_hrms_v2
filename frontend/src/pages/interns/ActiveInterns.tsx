@@ -262,10 +262,13 @@ const ActiveInterns: React.FC = () => {
     <div className="bg-gray-50 min-h-screen p-6">
       {/* Title + Add button */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Active Interns</h1>
-          <p className="text-gray-500 mt-1">Review, monitor and verify interns in real time.</p>
-        </div>
+         <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-left">
+          <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            Active Interns
+          </span>
+        </h1>
+      </div>
         
       </div>
 
