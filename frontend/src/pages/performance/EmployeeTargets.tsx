@@ -229,7 +229,7 @@ export default function AssignTarget() {
   }
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-6 space-y-8">
       {/* Header Section */}
       <div className="flex justify-between items-center">
         <div>

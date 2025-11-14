@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { api } from '../../lib/api'
 import { toast } from 'sonner'
 import Button from '../../components/ui/Button'
 import Dialog from '../../components/ui/Dialog'
 import Input from '../../components/ui/Input'
 import { Table, THead, TBody, TR, TH, TD } from '../../components/ui/Table'
+
 
 type Candidate = {
   id: string
@@ -45,12 +46,14 @@ type Candidate = {
   rejectComment?: string
 }
 
+
 type EmailTemplate = {
   id: string
   name: string
   subject: string
   body_html: string
 }
+
 
 export default function PendingVerification() {
   const [rows, setRows] = useState<Candidate[]>([])
@@ -59,6 +62,7 @@ export default function PendingVerification() {
   const [rejectComment, setRejectComment] = useState('')
   const [joiningDate, setJoiningDate] = useState('')
   const [confirmationDate, setConfirmationDate] = useState('')
+  const [query, setQuery] = useState('')
 
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
   const [action, setAction] = useState<'accept' | 'reject' | null>(null)
@@ -71,8 +75,18 @@ export default function PendingVerification() {
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null)
   const [sendingMail, setSendingMail] = useState(false)
 
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase()
+    return rows.filter((r) =>
+      [r.full_name, r.email, r.phone, r.source, r.verificationStatus].some((v) =>
+        (v || '').toLowerCase().includes(q)
+      )
+    )
+  }, [rows, query])
+
   async function fetchRows() {
     setLoading(true)
+    setQuery('') // Clear the search input
     try {
       const res = await api.get('/api/personaldetails/filled')
 
@@ -87,7 +101,7 @@ export default function PendingVerification() {
         return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
       }
 
-      const normalized = (res.data || []).map((r: any) => {debugger
+      const normalized = (res.data || []).map((r: any) => {
         const user = r.user || {}
 
         return {
@@ -153,8 +167,8 @@ export default function PendingVerification() {
   }
 
   function openView(candidate: Candidate) {
-    console.log('joining date', candidate.joiningDate);
-    console.log('confirmation date', candidate.confirmationDate);
+    console.log('joining date', candidate.joiningDate)
+    console.log('confirmation date', candidate.confirmationDate)
     setSelectedCandidate(candidate)
     setRejectComment(candidate.rejectComment || '')
     // Prefill joining and confirmation dates if available
@@ -269,15 +283,27 @@ export default function PendingVerification() {
 
   return (
     <section className="max-w-7xl mx-auto p-6 space-y-8 bg-gradient-to-br from-white via-gray-50 to-indigo-50 rounded-2xl shadow-md">
-      <div className="flex flex-col space-y-3 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-gradient bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-left">
+          <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
             Pending Verification
-          </h1>
-          <p className="mt-1 text-gray-600 text-lg">Review and verify candidate information before onboarding</p>
-        </div>
-        <div className="flex items-center gap-4">
-          
+          </span>
+        </h1>
+        <div className="flex items-center gap-3 ml-auto">
+          <Input
+            placeholder="Search candidates..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="rounded-lg border border-gray-300 px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+          />
+          <Button
+            variant="outline"
+            onClick={fetchRows}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg border border-gray-300 shadow-sm hover:bg-gray-50"
+          >
+            {loading ? "Loading..." : "Refresh"}
+          </Button>
         </div>
       </div>
 
@@ -293,14 +319,14 @@ export default function PendingVerification() {
             </TR>
           </THead>
           <TBody>
-            {rows.length === 0 && (
+            {filtered.length === 0 && (
               <TR>
                 <TD colSpan={5} className="text-center py-16 text-gray-500 bg-indigo-50 font-medium">
                   No candidates awaiting verification.
                 </TD>
               </TR>
             )}
-            {rows.map((r) => (
+            {filtered.map((r) => (
               <TR key={r.id} className="hover:bg-indigo-100 transition cursor-pointer">
                 <TD className="px-8 py-4 font-semibold">{r.full_name}</TD>
                 <TD className="px-6 py-4">{r.email}</TD>
@@ -308,10 +334,10 @@ export default function PendingVerification() {
                 <TD className="px-6 py-4 font-medium">
                   <span
                     className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${r.verificationStatus === 'Verified'
-                        ? 'bg-green-100 text-green-800'
-                        : r.verificationStatus === 'Rejected'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-yellow-100 text-yellow-800'
+                      ? 'bg-green-100 text-green-800'
+                      : r.verificationStatus === 'Rejected'
+                        ? 'bg-red-100 text-red-800'
+                        : 'bg-yellow-100 text-yellow-800'
                       }`}
                   >
                     {r.verificationStatus || 'Pending'}
@@ -506,10 +532,10 @@ export default function PendingVerification() {
               <div className="flex items-center gap-3 mt-4">
                 <span
                   className={`inline-block rounded-full px-4 py-1 text-sm font-semibold ${selectedCandidate.verificationStatus === 'Accepted'
-                      ? 'bg-green-200 text-green-800'
-                      : selectedCandidate.verificationStatus === 'Rejected'
-                        ? 'bg-red-200 text-red-800'
-                        : 'bg-yellow-200 text-yellow-800'
+                    ? 'bg-green-200 text-green-800'
+                    : selectedCandidate.verificationStatus === 'Rejected'
+                      ? 'bg-red-200 text-red-800'
+                      : 'bg-yellow-200 text-yellow-800'
                     }`}
                 >
                   {selectedCandidate.verificationStatus || 'Pending'}
@@ -632,8 +658,8 @@ export default function PendingVerification() {
                 className="text-sm text-gray-800"
                 dangerouslySetInnerHTML={{
                   __html: selectedTemplate.body_html.replace('{{full_name}}', mailCandidate?.full_name || '')
-                                                    .replace('{{email}}', mailCandidate?.email || '')
-                                                    .replace('{{password}}', mailCandidate?.fname?.toLocaleLowerCase() + '123$' || '')
+                    .replace('{{email}}', mailCandidate?.email || '')
+                    .replace('{{password}}', mailCandidate?.fname?.toLocaleLowerCase() + '123$' || '')
                 }}
               />
             </div>
