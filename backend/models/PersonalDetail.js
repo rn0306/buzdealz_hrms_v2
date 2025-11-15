@@ -94,20 +94,29 @@ const PersonalDetail = sequelize.define(
       allowNull: true,
     },
 
-    source: {
+    work_type: {
       type: DataTypes.STRING,
       allowNull: true,
     },
 
-    current_stage: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      defaultValue: 'New',
+    internship_duration_months: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    internship_duration_days: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    stipend: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
     },
 
     verification_status: {
-      type: DataTypes.ENUM('PENDING', 'VERIFIED', 'REJECTED'),
-      defaultValue: 'PENDING',
+      type: DataTypes.STRING,
+      allowNull: true,
     },
 
     verified_by: {

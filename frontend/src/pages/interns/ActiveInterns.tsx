@@ -4,10 +4,32 @@ import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import Select from "../../components/ui/Select";
 import Dialog from "../../components/ui/Dialog";
+import { toast } from 'sonner';
 import { Table, THead, TBody, TR, TH, TD } from "../../components/ui/Table";
-import { User, Check, X, Eye, Edit, Power, UserCog, Plus, Search } from "lucide-react";
+import { User, Check, Eye, Edit, Search } from "lucide-react";
 
 // --- Types ---
+interface PersonalDetail {
+  adhar_card_no: string;
+  pan_card_no: string;
+  bank_name: string;
+  account_no: string;
+  ifsc_code: string;
+  highest_education: string;
+  university_name: string;
+  passing_year: string;
+  last_company_name: string;
+  role_designation: string;
+  duration: string;
+  source: string;
+  current_stage: string;
+  verification_status: "VERIFIED" | "PENDING" | "REJECTED";
+}
+
+interface RoleType {
+  code: string;
+}
+
 interface Intern {
   id: string;
   manager_id: string | null;
@@ -18,122 +40,67 @@ interface Intern {
   mname: string | null;
   lname: string;
   phone: string;
-  department?: string;
   join_date?: string;
-  personalDetail: {
-    adhar_card_no: string;
-    pan_card_no: string;
-    bank_name: string;
-    account_no: string;
-    ifsc_code: string;
-    highest_education: string;
-    university_name: string;
-    passing_year: string;
-    last_company_name: string;
-    role_designation: string;
-    duration: string;
-    source: string;
-    current_stage: string;
-    verification_status: "VERIFIED" | "PENDING" | "REJECTED";
-  };
-  Role: {
-    code: string;
-  };
+
+  // NEW INTERN-ONLY FIELDS (stored separately)
+  work_type?: string;
+  internship_duration_months?: number;   // NEW: months part
+  internship_duration_days?: number;     // NEW: days part
+  stipend?: number;
+
+  personalDetail: PersonalDetail;
+  Role: RoleType;
 }
 
-type Employee = Intern; // Used for managers
+type Employee = Intern;
 
-// --- Constants ---
 const SUMMARY_CARD_CONFIG = [
   { icon: <User className="text-blue-500" size={24} />, title: "Total Interns", accent: "border-blue-500 bg-blue-50", key: "total" },
   { icon: <Check className="text-green-500" size={24} />, title: "Managers", accent: "border-green-500 bg-green-50", key: "managers" },
   { icon: <Eye className="text-purple-500" size={24} />, title: "Verified Employees", accent: "border-purple-500 bg-purple-50", key: "verified" },
-  { icon: <UserCog className="text-yellow-500" size={24} />, title: "Joined This Week", accent: "border-yellow-500 bg-yellow-50", key: "joined" },
+  { icon: <User className="text-yellow-500" size={24} />, title: "Joined This Week", accent: "border-yellow-500 bg-yellow-50", key: "joined" },
 ];
 
 const ROLES = ["INTERN", "MANAGER", "RECRUITER"];
-const DEPARTMENTS = ["Engineering", "HR", "Marketing", "Sales"];
-// verification-related statuses removed from filters per request
-const MOCK_INTERN_DATA: Intern[] = [
-  {
-    id: "8468378a-05f0-4117-8bba-c0d993652ff5",
-    manager_id: null,
-    role_id: "a86af16e-085d-4596-a376-414e46a9e8d1",
-    email: "rahulnarwane78@gmail.com",
-    recruiter_id: "7f6497e8-172c-4b42-8cec-aecbc7073bfd",
-    fname: "Rahul",
-    mname: null,
-    lname: "Narwane",
-    phone: "7755975177",
-    department: "Engineering",
-    join_date: "2024-05-02",
-    personalDetail: {
-      adhar_card_no: "123412341234",
-      pan_card_no: "dfghj4567df",
-      bank_name: "SBI",
-      account_no: "345678",
-      ifsc_code: "SBIN345678",
-      highest_education: "BCA",
-      university_name: "pune",
-      passing_year: "2022",
-      last_company_name: "RNT",
-      role_designation: "Java",
-      duration: "3",
-      source: "Portal",
-      current_stage: "Shortlisted",
-      verification_status: "PENDING",
-    },
-    Role: { code: "INTERN" },
-  },
-  // Example manager
-  {
-    id: "1",
-    manager_id: null,
-    role_id: "manager_role",
-    email: "manager1@email.com",
-    recruiter_id: "",
-    fname: "Harsha",
-    mname: null,
-    lname: "Manager",
-    phone: "0000000000",
-    department: "Engineering",
-    join_date: "2022-01-01",
-    personalDetail: {
-      adhar_card_no: "",
-      pan_card_no: "",
-      bank_name: "",
-      account_no: "",
-      ifsc_code: "",
-      highest_education: "MBA",
-      university_name: "IIM",
-      passing_year: "2020",
-      last_company_name: "",
-      role_designation: "Management",
-      duration: "",
-      source: "",
-      current_stage: "Active",
-      verification_status: "VERIFIED",
-    },
-    Role: { code: "MANAGER" }
-  }
-];
 
-// --- Component ---
+// utility to parse a legacy duration string like "2 months 15 days" or "2 months" or "15 days"
+function parseDurationToParts(duration?: string | null) {
+  let months = 0;
+  let days = 0;
+  if (!duration) return { months, days };
+  const monthMatch = duration.match(/(\d+)\s*month/);
+  const dayMatch = duration.match(/(\d+)\s*day/);
+  if (monthMatch) months = Number(monthMatch[1]);
+  if (dayMatch) days = Number(dayMatch[1]);
+  // fallback: if the string is numeric assume days
+  if (!monthMatch && !dayMatch) {
+    const numeric = parseInt(duration, 10);
+    if (!isNaN(numeric)) {
+      days = numeric;
+    }
+  }
+  return { months, days };
+}
+
 const ActiveInterns: React.FC = () => {
   const [interns, setInterns] = useState<Intern[]>([]);
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>("");
   const [selectedIntern, setSelectedIntern] = useState<Intern | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState<Intern | null>(null);
 
+  // Add/Edit forms
+  const [addForm, setAddForm] = useState<Partial<Intern>>({});
+  const [editForm, setEditForm] = useState<Partial<Intern>>({});
+
+  // Load interns
   useEffect(() => {
-    // Fetch verified interns from backend
     let mounted = true;
     async function load() {
       try {
-        const res = await api.get('/api/personaldetails', { params: { verification_status: 'VERIFIED', limit: 200 } });
+        const res = await api.get('/api/personaldetails');
         const data = res.data || [];
+        console.log('Fetched interns data:', data);
         const mapped: Intern[] = data.map((d: any) => {
           const user = d.user || {};
           return {
@@ -146,8 +113,14 @@ const ActiveInterns: React.FC = () => {
             mname: user.mname || null,
             lname: user.lname || '',
             phone: user.phone || '',
-            department: d.department || undefined,
-            join_date: user.joining_date || d.joining_date || undefined,
+            join_date: user.joining_date || d.joining_date,
+
+            // NEW (default values set from parsed legacy or empty)
+            work_type: d.work_type || "",
+            internship_duration_months: d.internship_duration_months !== undefined ? Number(d.internship_duration_months) : 0,
+            internship_duration_days: d.internship_duration_days !== undefined ? Number(d.internship_duration_days) : 0,
+            stipend: d.stipend !== undefined ? Number(d.stipend) : undefined,
+
             personalDetail: {
               adhar_card_no: d.adhar_card_no || '',
               pan_card_no: d.pan_card_no || '',
@@ -164,144 +137,175 @@ const ActiveInterns: React.FC = () => {
               current_stage: d.current_stage || '',
               verification_status: d.verification_status || 'PENDING',
             },
-            Role: { code: (user.role_id ? 'INTERN' : 'INTERN') }
-          } as Intern;
+            Role: { code: user.role_id ? 'INTERN' : 'INTERN' },
+          };
         });
-        if (mounted) setInterns(mapped.length ? mapped : MOCK_INTERN_DATA);
-      } catch (err: any) {
-        console.error('Failed to load verified interns', err);
-        // fallback to mock data
-        if (mounted) setInterns(MOCK_INTERN_DATA);
+
+        if (mounted) setInterns(mapped);
+      } catch (err) {
+        if (mounted) setInterns([]);
       }
     }
     load();
     return () => { mounted = false };
   }, []);
 
-  // Get manager options from employees data
   const managerOptions = useMemo(() =>
-    interns.filter(emp => emp.Role.code === "MANAGER"), [interns]);
+    interns.filter(emp => emp.Role.code === "MANAGER"), [interns]
+  );
 
-  // Filtered rows
   const filteredInterns = useMemo(() => {
     return interns.filter((intern) => {
       const fullName = `${intern.fname} ${intern.lname}`.toLowerCase();
-      const matchesSearch =
+      return (
         fullName.includes(search.toLowerCase()) ||
         intern.email.toLowerCase().includes(search.toLowerCase()) ||
-        intern.phone.includes(search);
-
-      const matchesRole = roleFilter === "" || intern.Role.code === roleFilter;
-      return matchesSearch && matchesRole;
+        intern.phone.includes(search)
+      );
     });
-  }, [interns, search, roleFilter]);
+  }, [interns, search]);
 
-  // Summary cards
-  const stats = useMemo(() => {
-      let managers = 0, verified = 0, joined = 0;
-      const WEEK_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
-      const now = Date.now();
-
-      interns.forEach((i) => {
-        if (i.Role.code === "MANAGER") managers++;
-        // count verified employees based on personalDetail.verification_status
-        if (i.personalDetail && String(i.personalDetail.verification_status).toUpperCase() === 'VERIFIED') verified++;
-        // joined this week: join_date within last 7 days
-        if (i.join_date) {
-          const jd = new Date(i.join_date).getTime();
-          if (!isNaN(jd) && (now - jd) <= WEEK_MS) joined++;
-        }
-      });
-
-      return { total: interns.length, managers, verified, joined };
-    }, [interns]);
-
-  // --- Handlers ---
-  function handleAddIntern(newIntern: Partial<Intern>) {
-    const newEntry: Intern = {
-      ...newIntern,
-      id: Math.random().toString(),
-      personalDetail: MOCK_INTERN_DATA[0].personalDetail,
-      recruiter_id: "",
-      role_id: "",
-      mname: null,
-      Role: { code: newIntern.Role?.code || "INTERN" }
-    } as Intern;
-    setInterns(list => [...list, newEntry]);
-    console.log("New intern:", newEntry);
-    setShowAddModal(false);
-  }
-
-  function handleEditIntern(edited: Partial<Intern>, original: Intern) {
-    const updated: Intern = { ...original, ...edited, Role: { code: edited.Role?.code || original.Role.code } };
-    setInterns(list => list.map(i => i.id === original.id ? updated : i));
-    console.log("Updated intern:", updated);
-    setShowEditModal(null);
-  }
-
-  // Form State Hooks for add/edit
-  const [addForm, setAddForm] = useState<Partial<Intern>>({});
+  // initialize addForm whenever Add Modal opens
   useEffect(() => {
     if (showAddModal)
-      setAddForm({ fname: "", lname: "", email: "", phone: "", Role: { code: "" }, department: "", manager_id: "", join_date: "" });
+      setAddForm({
+        fname: "",
+        lname: "",
+        email: "",
+        phone: "",
+        Role: { code: "" },
+        manager_id: "",
+        join_date: "",
+        work_type: "",
+        internship_duration_months: 0,
+        internship_duration_days: 0,
+        stipend: undefined,
+      });
   }, [showAddModal]);
 
-  const [editForm, setEditForm] = useState<Partial<Intern>>({});
+  // initialize editForm when edit modal opens
   useEffect(() => {
-    if (showEditModal && showEditModal !== null) {
+    if (showEditModal) {
       setEditForm({
         ...showEditModal,
         Role: { code: showEditModal.Role.code },
-        manager_id: showEditModal.manager_id || ""
+        manager_id: showEditModal.manager_id || "",
+        internship_duration_months: showEditModal.internship_duration_months ?? 0,
+        internship_duration_days: showEditModal.internship_duration_days ?? 0,
       });
     }
   }, [showEditModal]);
 
-  // --- JSX ---
+  const shouldShowManagerDropdown = (role: string | undefined) => role === "INTERN";
+  const shouldShowInternExtraFields = (role: string | undefined) => role === "INTERN";
+
+  // helper to build a human readable duration string from months/days
+  function buildDurationString(months?: number | null, days?: number | null) {
+    const m = months ?? 0;
+    const d = days ?? 0;
+    const parts: string[] = [];
+    if (m > 0) parts.push(`${m} month${m > 1 ? 's' : ''}`);
+    if (d > 0) parts.push(`${d} day${d > 1 ? 's' : ''}`);
+    return parts.length ? parts.join(' ') : '';
+  }
+
+  async function handleEditIntern(edited: Partial<Intern>, original: Intern) {
+    try {
+      const payload: any = {};
+
+      // user fields
+      if (edited.fname || edited.lname) payload.full_name = `${edited.fname || original.fname} ${edited.lname || original.lname}`.trim();
+      if (edited.email !== undefined) payload.email = edited.email;
+      if (edited.phone !== undefined) payload.phone = edited.phone;
+      if (edited.join_date !== undefined) payload.joining_date = edited.join_date;
+
+      // personalDetail fields
+      if (edited.personalDetail) {
+        const pd = edited.personalDetail as Partial<Intern['personalDetail']>;
+        const allowed = [
+          'adhar_card_no','pan_card_no','bank_name','account_no','branch_name','ifsc_code',
+          'highest_education','university_name','passing_year','last_company_name','role_designation',
+          'duration','other_documents_url','id_proof_url','verification_status','verified_by','verified_at','source','current_stage',
+          'work_type','internship_duration','stipend'
+        ];
+        for (const k of allowed) {
+          if ((pd as any)[k] !== undefined) payload[k] = (pd as any)[k];
+        }
+      }
+
+      // intern-specific fields: months/days/stipend/work_type
+      if ((edited as any).work_type !== undefined) payload.work_type = (edited as any).work_type;
+      if ((edited as any).internship_duration_months !== undefined) payload.internship_duration_months = Number((edited as any).internship_duration_months);
+      if ((edited as any).internship_duration_days !== undefined) payload.internship_duration_days = Number((edited as any).internship_duration_days);
+
+      // for backward compatibility include a human readable internship_duration string
+      if ((edited as any).internship_duration_months !== undefined || (edited as any).internship_duration_days !== undefined) {
+        payload.internship_duration = buildDurationString((edited as any).internship_duration_months, (edited as any).internship_duration_days);
+      }
+
+      if ((edited as any).stipend !== undefined) payload.stipend = Number((edited as any).stipend);
+
+      const res = await api.put(`/api/personaldetails/${original.id}`, payload);
+
+      const updatedUser = res.data?.user || {};
+      const updatedDetail = res.data?.personalDetail || {};
+
+      const updatedIntern: Intern = {
+        ...original,
+        fname: updatedUser.fname || original.fname,
+        lname: updatedUser.lname || original.lname,
+        email: updatedUser.email || original.email,
+        phone: updatedUser.phone || original.phone,
+        join_date: updatedUser.joining_date || original.join_date,
+        personalDetail: {
+          ...original.personalDetail,
+          ...updatedDetail,
+          verification_status: updatedDetail.verification_status || original.personalDetail.verification_status,
+        },
+        Role: { code: edited.Role?.code || original.Role.code },
+        work_type: (edited as any).work_type ?? original.work_type,
+        internship_duration_months: (edited as any).internship_duration_months ?? original.internship_duration_months,
+        internship_duration_days: (edited as any).internship_duration_days ?? original.internship_duration_days,
+        stipend: (edited as any).stipend ?? original.stipend,
+      } as Intern;
+
+      setInterns(list => list.map(i => i.id === original.id ? updatedIntern : i));
+      toast.success(res.data?.message || 'Profile updated');
+      setShowEditModal(null);
+    } catch (err: any) {
+      console.error('Failed to update intern', err);
+      toast.error(err?.response?.data?.error || 'Failed to update intern');
+    }
+  }
+
   return (
     <div className="bg-gray-50 min-h-screen p-6">
-      {/* Title + Add button */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
-         <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-left">
+
+      {/* Title */}
+      <div className="flex justify-between mb-6">
+        <h1 className="text-2xl font-semibold">
           <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
             Active Interns
           </span>
         </h1>
       </div>
-        
+
+      {/* Search */}
+      <div className="flex justify-end mb-4">
+        <div className="relative max-w-xs w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+          <Input
+            id="search"
+            type="text"
+            className="pl-9 w-full"
+            placeholder="Search interns..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
       </div>
 
-      {/* Top Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {SUMMARY_CARD_CONFIG.map(card => (
-          <div key={card.key} className={`rounded-xl shadow-sm border-l-4 ${card.accent} p-4 flex items-center`}>
-            {card.icon}
-            <div className="ml-4">
-              <div className="text-sm font-medium text-gray-600">{card.title}</div>
-              <div className="text-2xl font-bold">{stats[card.key as keyof typeof stats]}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Search and Filters */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-3 mb-4">
-          <div className="relative max-w-xs w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-            <Input
-              id="search"
-              type="text"
-              className="pl-9 w-full"
-              placeholder="Search interns by name, email, or phone..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          
-      </div>
-
-      {/* Interns Table */}
+      {/* Table */}
       <div className="rounded-xl shadow-sm bg-white p-6">
         <Table>
           <THead>
@@ -311,138 +315,200 @@ const ActiveInterns: React.FC = () => {
               <TH>Phone</TH>
               <TH>Education</TH>
               <TH>Role</TH>
-              <TH>Current Stage</TH>
+              <TH>Status</TH>
               <TH>Actions</TH>
             </TR>
           </THead>
           <TBody>
             {filteredInterns.map(intern => (
-              <TR key={intern.id} className="hover:bg-gray-50 transition">
+              <TR key={intern.id}>
                 <TD>{intern.fname} {intern.lname}</TD>
                 <TD>{intern.email}</TD>
                 <TD>{intern.phone}</TD>
                 <TD>{intern.personalDetail.highest_education}</TD>
                 <TD>{intern.Role.code}</TD>
-                <TD>{intern.personalDetail.current_stage}</TD>
+                <TD>{intern.personalDetail.verification_status}</TD>
                 <TD>
                   <div className="flex gap-2">
-                    <Button className="p-2 rounded-full" variant="outline" onClick={() => setSelectedIntern(intern)}>
+                    <Button variant="outline" onClick={() => setSelectedIntern(intern)}>
                       <Eye size={18} />
                     </Button>
-                    <Button className="p-2 rounded-full" variant="outline" onClick={() => setShowEditModal(intern)}>
+                    <Button variant="outline" onClick={() => setShowEditModal(intern)}>
                       <Edit size={18} />
                     </Button>
-                    
                   </div>
                 </TD>
               </TR>
             ))}
-            {filteredInterns.length === 0 && (
-              <TR>
-                <TD colSpan={7} className="text-center text-gray-400">
-                  No interns found.
-                </TD>
-              </TR>
-            )}
           </TBody>
         </Table>
       </div>
 
-      {/* Add Employee Dialog */}
+      {/* Add Modal */}
       <Dialog open={showAddModal} onClose={() => setShowAddModal(false)} title="Add Employee">
         <form
           className="flex flex-col gap-4"
-          onSubmit={e => {
-            e.preventDefault();
-            handleAddIntern(addForm);
-          }}
+          onSubmit={(e) => e.preventDefault()}
         >
           <div className="flex gap-3">
-            <Input label="First Name" id="add-first" value={addForm.fname || ""} onChange={e => setAddForm(f => ({ ...f, fname: e.target.value }))} required />
-            <Input label="Last Name" id="add-last" value={addForm.lname || ""} onChange={e => setAddForm(f => ({ ...f, lname: e.target.value }))} required />
+            <Input label="First Name" required value={addForm.fname || ""} onChange={e => setAddForm(f => ({ ...f, fname: e.target.value }))} />
+            <Input label="Last Name" required value={addForm.lname || ""} onChange={e => setAddForm(f => ({ ...f, lname: e.target.value }))} />
           </div>
-          <Input label="Email" value={addForm.email || ""} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} required />
-          <Input label="Phone" value={addForm.phone || ""} onChange={e => setAddForm(f => ({ ...f, phone: e.target.value }))} required />
-          <Select id="add-role" label="Role" value={addForm.Role?.code || ""} onChange={e => setAddForm(f => ({ ...f, Role: { code: e.target.value } }))} required>
+
+          <Input label="Email" required value={addForm.email || ""} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} />
+          <Input label="Phone" required value={addForm.phone || ""} onChange={e => setAddForm(f => ({ ...f, phone: e.target.value }))} />
+
+          {/* Role */}
+          <Select label="Role" required value={addForm.Role?.code || ""} onChange={e => setAddForm(f => ({ ...f, Role: { code: e.target.value } }))}>
             <option value="">Select Role</option>
             {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
           </Select>
-          <Select id="add-dept" label="Department" value={addForm.department || ""} onChange={e => setAddForm(f => ({ ...f, department: e.target.value }))} required>
-            <option value="">Select Department</option>
-            {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-          </Select>
-          <Input
-            label="Join Date"
-            type="date"
-            value={addForm.join_date || ""}
-            onChange={e => setAddForm(f => ({ ...f, join_date: e.target.value }))}
-            required
-          />
-          <Select
-            id="add-manager"
-            label="Assign Manager"
-            value={addForm.manager_id || ""}
-            onChange={e => setAddForm(f => ({ ...f, manager_id: e.target.value }))}
-          >
-            <option value="">None</option>
-            {managerOptions.map(m => (
-              <option key={m.id} value={m.id}>
-                {m.fname} {m.lname}
-              </option>
-            ))}
-          </Select>
-          <div className="flex gap-4 justify-end mt-4">
+
+          {/* Join Date */}
+          <Input type="date" label="Join Date" required value={addForm.join_date || ""} onChange={e => setAddForm(f => ({ ...f, join_date: e.target.value }))} />
+
+          {/* INTERN-ONLY EXTRA FIELDS */}
+          {shouldShowInternExtraFields(addForm.Role?.code) && (
+            <div className="border rounded-lg p-4 bg-gray-50">
+              <h3 className="font-semibold mb-2 text-gray-700">Intern Details</h3>
+
+              <Input
+                label="Work Type"
+                placeholder="e.g., acquiring subscribers"
+                required
+                value={addForm.work_type || ""}
+                onChange={(e) => setAddForm(f => ({ ...f, work_type: e.target.value }))}
+              />
+
+              {/* NEW: Duration split into months + days */}
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <Select
+                    label="Months"
+                    value={String(addForm.internship_duration_months ?? 0)}
+                    onChange={(e) => setAddForm(f => ({ ...f, internship_duration_months: Number(e.target.value) }))}
+                  >
+                    {Array.from({ length: 25 }).map((_, idx) => (
+                      <option key={idx} value={idx}>{idx} {idx === 1 ? 'month' : 'months'}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <Select
+                    label="Days"
+                    value={String(addForm.internship_duration_days ?? 0)}
+                    onChange={(e) => setAddForm(f => ({ ...f, internship_duration_days: Number(e.target.value) }))}
+                  >
+                    {Array.from({ length: 31 }).map((_, idx) => (
+                      <option key={idx} value={idx}>{idx} {idx === 1 ? 'day' : 'days'}</option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+
+              <Input
+                label="Stipend (₹)"
+                type="number"
+                required
+                placeholder="Enter stipend amount"
+                value={addForm.stipend ?? ""}
+                onChange={(e) => setAddForm(f => ({ ...f, stipend: Number(e.target.value) }))}
+              />
+            </div>
+          )}
+
+          {/* Manager Dropdown */}
+          {shouldShowManagerDropdown(addForm.Role?.code) && (
+            <Select label="Assign Manager" required value={addForm.manager_id || ""} onChange={e => setAddForm(f => ({ ...f, manager_id: e.target.value }))}>
+              <option value="">Select Manager</option>
+              {managerOptions.map(m => (
+                <option key={m.id} value={m.id}>{m.fname} {m.lname}</option>
+              ))}
+            </Select>
+          )}
+
+          <div className="flex justify-end gap-4 mt-4">
             <Button variant="outline" type="button" onClick={() => setShowAddModal(false)}>Cancel</Button>
             <Button type="submit">Save</Button>
           </div>
         </form>
       </Dialog>
 
-      {/* Edit Employee Dialog */}
+      {/* Edit Modal */}
       <Dialog open={!!showEditModal} onClose={() => setShowEditModal(null)} title="Edit Employee">
         {showEditModal && (
           <form
             className="flex flex-col gap-4"
-            onSubmit={e => {
+            onSubmit={(e) => {
               e.preventDefault();
+              // ensure editForm has the fields we want to send
               handleEditIntern(editForm, showEditModal);
             }}
           >
             <div className="flex gap-3">
-              <Input label="First Name" id="edit-first" value={editForm.fname || ""} onChange={e => setEditForm(f => ({ ...f, fname: e.target.value }))} required />
-              <Input label="Last Name" id="edit-last" value={editForm.lname || ""} onChange={e => setEditForm(f => ({ ...f, lname: e.target.value }))} required />
+              <Input label="First Name" required value={editForm.fname || ""} onChange={e => setEditForm(f => ({ ...f, fname: e.target.value }))} />
+              <Input label="Last Name" required value={editForm.lname || ""} onChange={e => setEditForm(f => ({ ...f, lname: e.target.value }))} />
             </div>
-            <Input label="Email" value={editForm.email || ""} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} required />
-            <Input label="Phone" value={editForm.phone || ""} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} required />
-            <Select id="edit-role" label="Role" value={editForm.Role?.code || ""} onChange={e => setEditForm(f => ({ ...f, Role: { code: e.target.value } }))} required>
+
+            <Input label="Email" required value={editForm.email || ""} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
+            <Input label="Phone" required value={editForm.phone || ""} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} />
+
+            {/* Role */}
+            <Select label="Role" required value={editForm.Role?.code || ""} onChange={e => setEditForm(f => ({ ...f, Role: { code: e.target.value } }))}>
               <option value="">Select Role</option>
               {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
             </Select>
-            <Select id="edit-dept" label="Department" value={editForm.department || ""} onChange={e => setEditForm(f => ({ ...f, department: e.target.value }))} required>
-              <option value="">Select Department</option>
-              {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-            </Select>
-            <Input
-              label="Join Date"
-              type="date"
-              value={editForm.join_date || ""}
-              onChange={e => setEditForm(f => ({ ...f, join_date: e.target.value }))}
-              required
-            />
-            <Select
-              id="edit-manager"
-              label="Assign Manager"
-              value={editForm.manager_id || ""}
-              onChange={e => setEditForm(f => ({ ...f, manager_id: e.target.value }))}
-            >
-              <option value="">None</option>
-              {managerOptions.map(m => (
-                <option key={m.id} value={m.id}>
-                  {m.fname} {m.lname}
-                </option>
-              ))}
-            </Select>
-            <div className="flex gap-4 justify-end mt-4">
+
+            {/* Join Date */}
+            <Input type="date" label="Join Date" value={editForm.join_date || ""} onChange={e => setEditForm(f => ({ ...f, join_date: e.target.value }))} />
+
+            {/* INTERN-ONLY EXTRA FIELDS */}
+            {shouldShowInternExtraFields(editForm.Role?.code) && (
+              <div className="border rounded-lg p-4 bg-gray-50">
+                <h3 className="font-semibold mb-2 text-gray-700">Intern Details</h3>
+
+                <Input
+                  label="Work Type"
+                  placeholder="e.g., acquiring subscribers"
+                  required
+                  value={editForm.work_type || ""}
+                  onChange={(e) => setEditForm(f => ({ ...f, work_type: e.target.value }))}
+                />
+
+               <Input
+                  label="internship Duration (Months)"
+                  placeholder="Enter internship duration in months"
+                  value={editForm.internship_duration_months ?? ""}
+                  onChange={(e) => setEditForm(f => ({ ...f, internship_duration_months: Number(e.target.value) }))}
+                />
+
+                <Input
+                  label="internship Duration (Days)"
+                  placeholder="Enter internship duration in days"
+                  value={editForm.internship_duration_days ?? ""}
+                  onChange={(e) => setEditForm(f => ({ ...f, internship_duration_days: Number(e.target.value) }))}
+                />
+
+                <Input
+                  label="Stipend (₹)"
+                  required
+                  placeholder="Enter stipend amount"
+                  value={editForm.stipend ?? ""}
+                  onChange={(e) => setEditForm(f => ({ ...f, stipend: Number(e.target.value) }))}
+                />
+              </div>
+            )}
+
+            {shouldShowManagerDropdown(editForm.Role?.code) && (
+              <Select label="Assign Manager" value={editForm.manager_id || ""} onChange={e => setEditForm(f => ({ ...f, manager_id: e.target.value }))}>
+                <option value="">Select Manager</option>
+                {managerOptions.map(m => (
+                  <option key={m.id} value={m.id}>{m.fname} {m.lname}</option>
+                ))}
+              </Select>
+            )}
+
+            <div className="flex justify-end gap-4 mt-4">
               <Button variant="outline" type="button" onClick={() => setShowEditModal(null)}>Cancel</Button>
               <Button type="submit">Save</Button>
             </div>
@@ -450,7 +516,7 @@ const ActiveInterns: React.FC = () => {
         )}
       </Dialog>
 
-      {/* Details Dialog */}
+      {/* Details Modal */}
       <Dialog
         open={!!selectedIntern}
         onClose={() => setSelectedIntern(null)}
@@ -458,31 +524,30 @@ const ActiveInterns: React.FC = () => {
       >
         {selectedIntern && (
           <div className="flex flex-col gap-2 text-sm">
-            <div>
-              <span className="font-semibold">Full Name:</span> {selectedIntern.fname} {selectedIntern.lname}
-            </div>
-            <div>
-              <span className="font-semibold">Email:</span> {selectedIntern.email}
-            </div>
-            <div>
-              <span className="font-semibold">Phone:</span> {selectedIntern.phone}
-            </div>
-            <div>
-              <span className="font-semibold">Manager:</span> {selectedIntern.manager_id
-                ? (() => {
-                  const mgr = interns.find(emp => emp.id === selectedIntern.manager_id);
-                  return mgr ? `${mgr.fname} ${mgr.lname}` : "—";
-                })()
-                : "—"}
-            </div>
-            <div>
-              <span className="font-semibold">Education:</span> {selectedIntern.personalDetail.highest_education}
-            </div>
-            {/* ...rest of details as needed */}
-            {/* Verification status removed from details view per request */}
+            <div><strong>Full Name:</strong> {selectedIntern.fname} {selectedIntern.lname}</div>
+            <div><strong>Email:</strong> {selectedIntern.email}</div>
+            <div><strong>Phone:</strong> {selectedIntern.phone}</div>
+
+            {selectedIntern.work_type && (
+              <div><strong>Work Type:</strong> {selectedIntern.work_type}</div>
+            )}
+
+            {(selectedIntern.internship_duration_months || selectedIntern.internship_duration_days) ? (
+              <div>
+                <strong>Duration:</strong>{" "}
+                {buildDurationString(selectedIntern.internship_duration_months, selectedIntern.internship_duration_days)}
+              </div>
+            ) : null}
+
+            {selectedIntern.stipend !== undefined && (
+              <div><strong>Stipend:</strong> ₹{selectedIntern.stipend}</div>
+            )}
+
+            <div><strong>Education:</strong> {selectedIntern.personalDetail.highest_education}</div>
           </div>
         )}
       </Dialog>
+
     </div>
   );
 };

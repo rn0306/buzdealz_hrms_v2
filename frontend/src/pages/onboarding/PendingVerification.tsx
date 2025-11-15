@@ -42,7 +42,7 @@ type Candidate = {
   otherDocuments?: string
   joiningDate?: string
   confirmationDate?: string
-  verificationStatus?: 'Pending' | 'Verified' | 'Rejected'
+  verificationStatus?: 'Pending' | 'VERIFIED' | 'REJECTED'
   rejectComment?: string
 }
 
@@ -65,7 +65,7 @@ export default function PendingVerification() {
   const [query, setQuery] = useState('')
 
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
-  const [action, setAction] = useState<'accept' | 'reject' | null>(null)
+  const [action, setAction] = useState<'VERIFIED' | 'REJECTED' | null>(null)
 
   // ✉️ Mail Dialog States
   const [openMailDialog, setOpenMailDialog] = useState(false)
@@ -95,7 +95,7 @@ export default function PendingVerification() {
         const s = String(v).trim()
         if (!s) return undefined
         const up = s.toUpperCase()
-        if (up.includes('ACCEPT')) return 'Accepted'
+        if (up.includes('VERIFIED')) return 'Verified'
         if (up.includes('REJECT')) return 'Rejected'
         if (up.includes('PEND')) return 'Pending'
         return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
@@ -111,7 +111,6 @@ export default function PendingVerification() {
           email: user.email || '-',
           phone: user.phone || '-',
           source: r.source,
-          current_stage: r.current_stage,
           verificationStatus: normalizeVerification(r.verification_status),
           joiningDate: user.joining_date || r.joining_date || null,
           confirmationDate: user.confirmation_date || r.confirmation_date || null,
@@ -190,41 +189,41 @@ export default function PendingVerification() {
   async function handleSave() {
     if (!selectedCandidate) return
 
-    if (action === 'reject' && rejectComment.trim() === '') {
+    if (action === 'REJECTED' && rejectComment.trim() === '') {
       toast.error('Please provide a reason for rejection')
       return
     }
 
-    if (action === 'accept' && !joiningDate) {
+    if (action === 'VERIFIED' && !joiningDate) {
       toast.error('Please select joining date')
       return
     }
 
     try {
       // confirmationDate state is in datetime-local format (YYYY-MM-DDTHH:mm)
-      const confirmationToSend = action === 'accept'
+      const confirmationToSend = action === 'VERIFIED'
         ? (confirmationDate && confirmationDate.includes('T') ? new Date(confirmationDate).toISOString() : new Date().toISOString())
         : null
 
       await api.post(`/api/onboarding/verify-and-update/${selectedCandidate.id}`, {
-        verificationStatus: action === 'accept' ? 'Accepted' : 'Rejected',
-        rejectComment: action === 'reject' ? rejectComment.trim() : '',
-        joiningDate: action === 'accept' ? joiningDate : null,
+        verificationStatus: action === 'VERIFIED' ? 'VERIFIED' : 'REJECTED',
+        rejectComment: action === 'REJECTED' ? rejectComment.trim() : '',
+        joiningDate: action === 'VERIFIED' ? joiningDate : null,
         confirmationDate: confirmationToSend,
       })
 
       // Update local state for the row to avoid full reload
       const updatedCandidate: Candidate = {
         ...selectedCandidate,
-        verificationStatus: (action === 'accept' ? 'Accepted' : 'Rejected') as 'Accepted' | 'Rejected' | 'Pending',
-        rejectComment: action === 'reject' ? rejectComment.trim() : '',
-        joiningDate: action === 'accept' ? joiningDate : selectedCandidate.joiningDate,
-        confirmationDate: action === 'accept' ? formatToDateTimeLocal(confirmationToSend || '') : selectedCandidate.confirmationDate,
+        verificationStatus: (action === 'VERIFIED' ? 'VERIFIED' : 'REJECTED') as 'VERIFIED' | 'REJECTED' | 'PENDING',
+        rejectComment: action === 'REJECTED' ? rejectComment.trim() : '',
+        joiningDate: action === 'VERIFIED' ? joiningDate : selectedCandidate.joiningDate,
+        confirmationDate: action === 'VERIFIED' ? formatToDateTimeLocal(confirmationToSend || '') : selectedCandidate.confirmationDate,
       }
 
       setRows(prevRows => prevRows.map(r => r.id === selectedCandidate.id ? updatedCandidate : r))
 
-      toast.success(`Candidate profile ${action === 'accept' ? 'accepted' : 'rejected'}`)
+      toast.success(`Candidate profile ${action === 'VERIFIED' ? 'VERIFIED' : 'REJECTED'}`)
       closeView()
     } catch (err: any) {
       toast.error(err?.response?.data?.error || 'Failed to update verification status')
@@ -333,9 +332,9 @@ export default function PendingVerification() {
                 <TD className="px-6 py-4">{r.phone || '-'}</TD>
                 <TD className="px-6 py-4 font-medium">
                   <span
-                    className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${r.verificationStatus === 'Verified'
+                    className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${r.verificationStatus === 'VERIFIED'
                       ? 'bg-green-100 text-green-800'
-                      : r.verificationStatus === 'Rejected'
+                      : r.verificationStatus === 'REJECTED'
                         ? 'bg-red-100 text-red-800'
                         : 'bg-yellow-100 text-yellow-800'
                       }`}
@@ -426,7 +425,7 @@ export default function PendingVerification() {
                 <Input
                   readOnly
                   placeholder="Current Stage"
-                  value={selectedCandidate.current_stage || '-'}
+                  value={selectedCandidate.verificationStatus || '-'}
                 />
               </div>
             </section>
@@ -531,9 +530,9 @@ export default function PendingVerification() {
               <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">Verification Status</h2>
               <div className="flex items-center gap-3 mt-4">
                 <span
-                  className={`inline-block rounded-full px-4 py-1 text-sm font-semibold ${selectedCandidate.verificationStatus === 'Accepted'
+                  className={`inline-block rounded-full px-4 py-1 text-sm font-semibold ${selectedCandidate.verificationStatus === 'VERIFIED'
                     ? 'bg-green-200 text-green-800'
-                    : selectedCandidate.verificationStatus === 'Rejected'
+                    : selectedCandidate.verificationStatus === 'REJECTED'
                       ? 'bg-red-200 text-red-800'
                       : 'bg-yellow-200 text-yellow-800'
                     }`}
@@ -541,7 +540,7 @@ export default function PendingVerification() {
                   {selectedCandidate.verificationStatus || 'Pending'}
                 </span>
               </div>
-              {selectedCandidate.verificationStatus === 'Rejected' && (
+              {selectedCandidate.verificationStatus === 'REJECTED' && (
                 <p className="mt-3 p-3 rounded-lg bg-red-100 text-red-700 whitespace-pre-wrap font-semibold">
                   Reject Comment: {selectedCandidate.rejectComment || '-'}
                 </p>
@@ -557,10 +556,10 @@ export default function PendingVerification() {
                 <select
                   value={action || ''}
                   onChange={(e) => {
-                    const v = e.target.value as 'accept' | 'reject' | ''
+                    const v = e.target.value as 'VERIFIED' | 'REJECTED' | ''
                     setAction(v || null)
-                    // Prefill confirmation date when moving to accept
-                    if (v === 'accept') {
+                    // Prefill confirmation date when moving to verified
+                    if (v === 'VERIFIED') {
                       if (!joiningDate) setJoiningDate(new Date().toISOString().slice(0, 10))
                       setConfirmationDate(new Date().toISOString().slice(0, 16))
                     }
@@ -568,12 +567,12 @@ export default function PendingVerification() {
                   className="block w-full rounded-md border border-indigo-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:border-indigo-600"
                 >
                   <option value="">-- Select action --</option>
-                  <option value="accept">Accept</option>
-                  <option value="reject">Reject</option>
+                  <option value="VERIFIED">Verified</option>
+                  <option value="REJECTED">Reject</option>
                 </select>
               </div>
 
-              {action === 'accept' && (
+              {action === 'VERIFIED' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                   <div>
                     <label className="block mb-1 font-semibold text-indigo-700">Joining Date</label>
@@ -617,8 +616,7 @@ export default function PendingVerification() {
                 >
                   Cancel
                 </Button>
-                <Button
-                  onClick={handleSave}
+                <Button type="button" onClick={handleSave}
                   disabled={action === null || (action === 'reject' && rejectComment.trim() === '')}
                   className="rounded-lg px-6 py-3 font-semibold shadow-lg bg-gradient-to-r from-indigo-600 to-blue-700 text-white hover:from-indigo-700 hover:to-blue-800 transition"
                 >

@@ -93,8 +93,10 @@ class CandidateController {
       const payload = req.body || {};
       if (payload.password) payload.password_hash = payload.password;
 
-      // Prevent updating primary id
-      delete payload.id;
+      let detail = await PersonalDetail.findOne({ where: { user_id: id } });
+       if (!detail) return res.status(404).json({ error: 'detail not found' });
+      Object.assign(detail, payload);
+      await detail.save();
 
       Object.assign(user, payload);
       await user.save();
@@ -110,6 +112,9 @@ class CandidateController {
   static async remove(req, res) {
     try {
       const { id } = req.params;
+      let detail = await PersonalDetail.findOne({ where: { user_id: id } });
+       if (!detail) return res.status(404).json({ error: 'detail not found' });
+      await detail.destroy();
       const user = await User.findByPk(id);
       if (!user) return res.status(404).json({ error: 'User not found' });
       await user.destroy();
@@ -118,6 +123,7 @@ class CandidateController {
       res.status(500).json({ error: err.message });
     }
   }
+  
 }
 
 module.exports = CandidateController;
