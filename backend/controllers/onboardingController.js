@@ -1,17 +1,17 @@
 const { PersonalDetail, OfferLetter, User, Role } = require('../models');
-const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
+const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
 
-// Helper: Generate onboarding token (valid for 7 days)
-function generateOnboardingToken(candidateId) {
-  // candidateId here maps to User.id
-  return jwt.sign({ candidateId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+async function hashPassword(plainPassword) {
+  const saltRounds = 12;
+  return await bcrypt.hash(plainPassword, saltRounds);
 }
 
-// Helper: Generate password from first name
-function generatePasswordFromName(full_name) {
-  const firstName = full_name.split(' ')[0].toLowerCase();
-  return `${firstName}123$`;
+
+function generateOnboardingToken() {
+  return crypto.randomBytes(16).toString("hex");   // 32 chars
 }
 
 class OnboardingController {
@@ -33,7 +33,7 @@ class OnboardingController {
         await detail.save();
       }
       // Generate onboarding token
-      const onboardingToken = generateOnboardingToken(candidate.id);
+      const onboardingToken = generateOnboardingToken();
       // (In real app, send email with link)
       res.json({
         message: 'Candidate marked as Selected',
@@ -47,7 +47,7 @@ class OnboardingController {
   // Recruiter creates a Candidate and an associated User (auto-generated password)
   static async createCandidate(req, res) {
     try {
-      const { full_name, email, phone, resume_url, source, assigned_recruiter } = req.body;
+      const { full_name, email, phone, resume_url, source, assigned_recruiter, date_of_birth } = req.body;
       if (!email || !full_name) return res.status(400).json({ error: 'full_name and email are required' });
 
       // Make sure there's no existing user with same email
@@ -60,6 +60,7 @@ class OnboardingController {
 
       // Generate password using first name
       const generatedPassword = generatePasswordFromName(full_name);
+      const onboarding_token = generateOnboardingToken(req.user_id);
 
       const names = full_name.split(' ');
       const fname = names[0] || '';
@@ -73,6 +74,8 @@ class OnboardingController {
         mname: null,
         lname,
         phone: phone || null,
+        date_of_birth,
+        onboarding_token,
         recruiter_id: assigned_recruiter || req.user.id,
         created_by: req.user.id,
         updated_by: req.user.id
@@ -82,7 +85,6 @@ class OnboardingController {
       const detail = await PersonalDetail.create({
         user_id: user.id,
         resume_url: resume_url || null,
-        source: source || null,
         created_by: req.user.id,
         updated_by: req.user.id
       });
@@ -135,8 +137,8 @@ class OnboardingController {
     try {
       const { candidateId } = req.params;
       const { verificationStatus, joiningDate, confirmationDate, rejectComment } = req.body;
-     // Validate inputs
-      if (!['Accepted', 'Rejected'].includes(verificationStatus)) {
+      // Validate inputs
+      if (!['Verified', 'Rejected'].includes(verificationStatus)) {
         return res.status(400).json({ error: 'Invalid verification status' });
       }
 
@@ -149,7 +151,7 @@ class OnboardingController {
       if (!detail) return res.status(404).json({ error: 'Candidate details not found' });
 
       // Update verification status
-      detail.verification_status = verificationStatus === 'Accepted' ? 'VERIFIED' : 'REJECTED';
+      detail.verification_status = verificationStatus == 'Verified' ? 'Verified' : 'Rejected';
       detail.verified_by = req.user.id;
       detail.verified_at = new Date();
 
@@ -159,7 +161,7 @@ class OnboardingController {
       }
 
       // Update user with joining date and confirmation date if accepted
-      if (verificationStatus === 'Accepted') {
+      if (verificationStatus === 'Verified') {
         if (joiningDate) {
           user.joining_date = joiningDate;
         }
@@ -198,9 +200,9 @@ class OnboardingController {
           current_stage: detail.current_stage
         }
       });
-      
+
     } catch (err) {
-      
+
       res.status(500).json({ error: err.message });
     }
   }
@@ -238,18 +240,13 @@ class OnboardingController {
       if (!token) return res.status(401).json({ error: 'Onboarding token required' });
       if (!new_password || new_password.length < 6) return res.status(400).json({ error: 'new_password required (min 6 chars)' });
 
-      let decoded;
-      try {
-        decoded = jwt.verify(token, process.env.JWT_SECRET);
-      } catch {
-        return res.status(401).json({ error: 'Invalid or expired onboarding token' });
-      }
-      if (decoded.candidateId !== candidateId) return res.status(403).json({ error: 'Token does not match candidate' });
-
       const user = await User.findByPk(candidateId);
       if (!user) return res.status(404).json({ error: 'Associated user account not found' });
+      const isValid =  token === user.onboarding_token;
 
-      user.password_hash = new_password; // beforeUpdate hook will hash
+
+      if (!isValid) return res.status(403).json({ error: 'Token does not match candidate' });
+      user.password_hash = await hashPassword(new_password); // beforeUpdate hook will hash
       await user.save();
 
       res.json({ message: 'Password updated successfully' });

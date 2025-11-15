@@ -95,6 +95,11 @@ const User = sequelize.define(
       type: DataTypes.UUID,
       allowNull: true,
     },
+    onboarding_token: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+
   },
   {
     tableName: 'Users',

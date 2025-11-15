@@ -13,11 +13,12 @@ type Candidate = {
   lname?: string;
   email: string;
   phone?: string;
-  source?: string;
-  current_stage?: string;
+  date_of_birth?: string;
+  verification_status?: string;
+  onboarding_token?: string;
 };
 
-type FormState = Partial<Candidate> & { resume_url?: string };
+type FormState = Partial<Candidate> & { resume_file?: File | null };
 
 type EmailTemplate = {
   id: string;
@@ -46,7 +47,7 @@ export default function Candidates() {
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
     return rows.filter((r) =>
-      [r.full_name, r.email, r.phone, r.source].some((v) =>
+      [r.full_name, r.email, r.phone].some((v) =>
         (v || "").toLowerCase().includes(q)
       )
     );
@@ -61,9 +62,8 @@ export default function Candidates() {
         ...r,
         full_name:
           r.full_name || `${(r.fname || "").trim()} ${(r.lname || "").trim()}`.trim(),
-        current_stage:
-          r.current_stage || r.personalDetail?.current_stage || r.current_stage,
-        source: r.source || r.personalDetail?.source || r.source,
+        verification_status:
+          r.verification_status || r.personalDetail?.verification_status || r.verification_status,
       }));
       setRows(normalized);
     } catch (err: any) {
@@ -79,7 +79,7 @@ export default function Candidates() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ full_name: "", email: "", phone: "", source: "Portal", resume_url: "" });
+    setForm({ full_name: "", email: "", phone: "", resume_file: null });
     setOpenForm(true);
   }
 
@@ -93,31 +93,27 @@ export default function Candidates() {
     e.preventDefault();
     try {
       if (editing) {
-        if (form.current_stage !== undefined) {
-          try {
-            await api.put(`/api/personaldetails/${editing.id}`, {
-              current_stage: form.current_stage,
-            });
-          } catch (err: any) {
-            toast.warning(
-              "Candidate updated but failed to update stage: " +
-              (err?.response?.data?.error || err.message || "")
-            );
-          }
-        }
+        const payload = {
+          full_name: form.full_name,
+          email: form.email,
+          phone: form.phone,
+          date_of_birth: form.date_of_birth,
+          verification_status: form.verification_status,
+        };
+        await api.put(`/api/candidates/${editing.id}`, payload);
         toast.success("Candidate updated");
       } else {
         const payload = {
           full_name: form.full_name,
           email: form.email,
           phone: form.phone,
-          resume_url: form.resume_url,
-          source: form.source || "Portal",
+          resume_file: form.resume_file,
         };
         await api.post("/api/onboarding/create-candidate", payload);
         toast.success("Candidate created");
       }
       setOpenForm(false);
+      fetchRows();
     } catch (err: any) {
       toast.error(err?.response?.data?.error || "Operation failed");
     }
@@ -134,7 +130,7 @@ export default function Candidates() {
     }
   }
 
-  const statusOptions = ["New", "Shortlisted", "Rejected", "On Hold"];
+  const statusOptions = ["PENDING", "Shortlisted", "Rejected", "On Hold"];
 
   // 📨 Open mail dialog
   async function openMail(row: Candidate) {
@@ -185,14 +181,6 @@ export default function Candidates() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="p-8 flex items-center justify-center h-screen">
-        <div className="text-gray-500">Loading...</div>
-      </div>
-    );
-  }
-
   return (
     <div className="p-6 space-y-8">
       {/* Header */}
@@ -232,7 +220,8 @@ export default function Candidates() {
                 <TH>Name</TH>
                 <TH>Email</TH>
                 <TH>Phone</TH>
-                <TH>Stage</TH>
+                <TH>Date of Birth</TH>
+                <TH>Verification Status</TH>
                 <TH className="text-center">Actions</TH>
               </TR>
             </THead>
@@ -249,7 +238,8 @@ export default function Candidates() {
                     <TD>{r.full_name}</TD>
                     <TD>{r.email}</TD>
                     <TD>{r.phone || "-"}</TD>
-                    <TD>{r.current_stage || "-"}</TD>
+                    <TD>{r.date_of_birth || "-"}</TD>
+                    <TD>{r.verification_status || "-"}</TD>
                     <TD>
                       <div className="flex justify-center gap-2">
                         <button
@@ -338,10 +328,10 @@ export default function Candidates() {
           <div className="grid grid-cols-2 gap-4">
             {editing && (
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Status</label>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Verification Status</label>
                 <select
-                  value={form.current_stage || 'New'}
-                  onChange={(e) => setForm({ ...form, current_stage: e.target.value })}
+                  value={form.verification_status || 'New'}
+                  onChange={(e) => setForm({ ...form, verification_status: e.target.value })}
                   className="block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 >
                   {statusOptions.map((opt) => (
@@ -416,30 +406,29 @@ export default function Candidates() {
             </select>
           </div>
 
-          {selectedTemplate && (
-            <div className="p-3 border rounded-lg bg-gray-50">
-              <h3 className="font-semibold text-indigo-700 mb-1">Subject:</h3>
-              <p className="text-gray-800 mb-2">
-                {selectedTemplate.subject.replace(
-                  "{{full_name}}",
-                  mailCandidate?.full_name || ""
-                )}
-              </p>
-              <h3 className="font-semibold text-indigo-700 mb-1">Body Preview:</h3>
-              <div
-                className="text-sm text-gray-700"
-                dangerouslySetInnerHTML={{
-                  __html: selectedTemplate.body_html
-                    .replace("{{full_name}}", mailCandidate?.full_name || "")
-                    .replace("{{email}}", mailCandidate?.email || "")
-                    .replace(
-                      "{{password}}",
-                      mailCandidate?.fname?.toLocaleLowerCase() + "123$" || ""
-                    ),
-                }}
-              />
-            </div>
-          )}
+          {selectedTemplate && (() => {
+            const onboardingURL = `setNewPassword/${mailCandidate?.id}?token=${mailCandidate?.onboarding_token}`;
+            return (
+              <div className="p-3 border rounded-lg bg-gray-50">
+                <h3 className="font-semibold text-indigo-700 mb-1">Subject:</h3>
+                <p className="text-gray-800 mb-2">
+                  {selectedTemplate.subject.replace(
+                    "{{full_name}}",
+                    mailCandidate?.full_name || ""
+                  )}
+                </p>
+                <h3 className="font-semibold text-indigo-700 mb-1">Body Preview:</h3>
+                <div
+                  className="text-sm text-gray-700"
+                  dangerouslySetInnerHTML={{
+                    __html: selectedTemplate.body_html
+                      .replace(/{{full_name}}/g, mailCandidate?.full_name || "")
+                      .replace(/{{onboarding_link}}/g, onboardingURL || ""),
+                  }}
+                />
+              </div>
+            );
+          })()}
 
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button

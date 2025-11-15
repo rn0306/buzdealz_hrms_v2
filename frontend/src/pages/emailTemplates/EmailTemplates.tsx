@@ -9,7 +9,7 @@ const placeholderChips = [
   '{{joining_date}}',
   '{{email}}',
   '{{designation}}',
-  '{{password}}',
+  '{{onboarding_link}}',
 ]
 
 type EmailTemplate = {

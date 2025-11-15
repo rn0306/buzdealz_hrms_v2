@@ -28,6 +28,7 @@ import EmailTemplates from './pages/emailTemplates/EmailTemplates'
 import Reports from './pages/reports/Reports'
 import Settings from './pages/Settings'
 import Profile from './pages/profile/Profile'
+import SetNewPassword from './pages/SetNewPassword'
 
 function Protected({ children }: { children: React.ReactNode }) {
   const loc = useLocation()
@@ -49,6 +50,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/setNewPassword/:id" element={<SetNewPassword />} />
       <Route
         path="/*"
         element={
