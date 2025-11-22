@@ -7,27 +7,37 @@ const ActivityLog = sequelize.define('ActivityLog', {
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true
   },
+
   user_id: {
     type: DataTypes.UUID,
     allowNull: false
   },
-  action: {
-    type: DataTypes.STRING(200),
+  
+  log_date: {
+    type: DataTypes.DATEONLY,
     allowNull: false
   },
-  entity: {
-    type: DataTypes.STRING(50)
+
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: false
   },
-  entity_id: {
-    type: DataTypes.UUID
+
+  hours_spent: {
+    type: DataTypes.FLOAT,
+    defaultValue: 0
   },
-  ip_address: {
-    type: DataTypes.STRING(50)
+
+  notes: {
+    type: DataTypes.TEXT,
+    allowNull: true
   }
+
 }, {
+  tableName: 'intern_daily_logs',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: false
+  updatedAt: 'updated_at'
 });
 
 module.exports = ActivityLog;

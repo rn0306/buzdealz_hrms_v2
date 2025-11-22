@@ -4,13 +4,27 @@ const { EmployeeTarget, User, TargetsMaster } = db;
 // List all employee targets
 exports.getAll = async (req, res) => {
   try {
+    const userId = req.user?.id;
+    const Role = await db.Role.findByPk(req.user.role_id).then(r => r.code);
+    if(Role === 'INTERN') {
+      const where = {user_id: userId};
+      const records = await EmployeeTarget.findAll({
+        where,
+        include: [
+          { model: User, as: 'user', attributes: ['id', 'fname', 'lname', 'email'] },
+          { model: TargetsMaster, as: 'target' },
+          { model: User, as: 'assigner', attributes: ['id', 'fname', 'lname'] },
+        ],
+      });
+      return res.json(records);       
+    }
     const records = await EmployeeTarget.findAll({
       include: [
         { model: User, as: 'user', attributes: ['id', 'fname', 'lname', 'email'] },
         { model: TargetsMaster, as: 'target' },
         { model: User, as: 'assigner', attributes: ['id', 'fname', 'lname'] },
       ],
-    });
+    }); 
     res.json(records);
   } catch (err) {
     res.status(500).json({ error: err.message });

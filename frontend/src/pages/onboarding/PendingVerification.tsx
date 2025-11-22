@@ -54,6 +54,13 @@ type EmailTemplate = {
   body_html: string
 }
 
+type DocumentTemplate = {
+  id: string
+  name: string
+  body_html: string
+  category: string
+}
+
 
 export default function PendingVerification() {
   const [rows, setRows] = useState<Candidate[]>([])
@@ -74,6 +81,13 @@ export default function PendingVerification() {
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null)
   const [sendingMail, setSendingMail] = useState(false)
+
+  // 📄 Document Template States (Offer Letter)
+  const [docTemplates, setDocTemplates] = useState<DocumentTemplate[]>([])
+  const [selectedDocTemplateId, setSelectedDocTemplateId] = useState('')
+  const [selectedDocTemplate, setSelectedDocTemplate] = useState<DocumentTemplate | null>(null)
+  const [generatingOffer, setGeneratingOffer] = useState(false)
+  const [offerPdfUrl, setOfferPdfUrl] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase()
@@ -236,11 +250,20 @@ export default function PendingVerification() {
     setOpenMailDialog(true)
     setSelectedTemplateId('')
     setSelectedTemplate(null)
+    setSelectedDocTemplateId('')
+    setSelectedDocTemplate(null)
+    setOfferPdfUrl(null)
     try {
       const res = await api.get('/api/email-templates')
       setTemplates(res.data.data || [])
     } catch (err: any) {
       toast.error('Failed to load templates')
+    }
+    try {
+      const res = await api.get('/api/document-templates')
+      setDocTemplates(res.data.data || [])
+    } catch (err: any) {
+      toast.error('Failed to load document templates')
     }
   }
 
@@ -249,6 +272,138 @@ export default function PendingVerification() {
     setSelectedTemplateId(id)
     const t = templates.find((x) => x.id === id) || null
     setSelectedTemplate(t)
+  }
+
+  // 📄 Handle document template change
+  function handleDocTemplateChange(id: string) {
+    setSelectedDocTemplateId(id)
+    const t = docTemplates.find((x) => x.id === id) || null
+    setSelectedDocTemplate(t)
+  }
+
+  // 📄 Generate Offer Letter PDF
+  async function generateOfferPdf() {
+    if (!selectedDocTemplate || !mailCandidate) {
+      toast.error('Please select a document template')
+      return
+    }
+    setGeneratingOffer(true)
+    try {
+      const res = await api.post(
+        '/api/documents/generate',
+        { 
+          template_id: selectedDocTemplate.id, 
+          data: {
+            full_name: mailCandidate.full_name,
+            email: mailCandidate.email,
+            phone: mailCandidate.phone || '',
+            joining_date: mailCandidate.joiningDate || '',
+            designation: 'Intern'
+          }
+        },
+        { responseType: 'blob' }
+      )
+      const url = URL.createObjectURL(res.data)
+      setOfferPdfUrl(url)
+      toast.success('Offer letter generated successfully')
+    } catch (err: any) {
+      toast.error('Failed to generate offer letter')
+    } finally {
+      setGeneratingOffer(false)
+    }
+  }
+
+  // 📄 Download Offer Letter PDF
+  async function downloadOfferPdf() {
+    if (!selectedDocTemplate || !mailCandidate) {
+      toast.error('Please select a document template')
+      return
+    }
+    try {
+      const res = await api.post(
+        '/api/documents/generate',
+        { 
+          template_id: selectedDocTemplate.id, 
+          data: {
+            full_name: mailCandidate.full_name,
+            email: mailCandidate.email,
+            phone: mailCandidate.phone || '',
+            joining_date: mailCandidate.joiningDate || '',
+            designation: 'Intern'
+          }
+        },
+        { responseType: 'blob' }
+      )
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `offer_letter_${mailCandidate.full_name}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      toast.success('Offer letter downloaded successfully')
+    } catch (err: any) {
+      toast.error('Failed to download offer letter')
+    }
+  }
+
+  // 📄 Send Mail with Offer Letter Attachment
+  async function sendMailWithOfferLetter() {
+    if (!mailCandidate || !selectedTemplate) {
+      toast.error('Please select an email template')
+      return
+    }
+    
+    setSendingMail(true)
+    try {
+      // Generate PDF as blob
+      let attachmentData = null
+      if (selectedDocTemplate) {
+        const res = await api.post(
+          '/api/documents/generate',
+          { 
+            template_id: selectedDocTemplate.id, 
+            data: {
+              full_name: mailCandidate.full_name,
+              email: mailCandidate.email,
+              phone: mailCandidate.phone || '',
+              joining_date: mailCandidate.joiningDate || '',
+              designation: 'Intern'
+            }
+          },
+          { responseType: 'blob' }
+        )
+        attachmentData = res.data
+      }
+
+      // Prepare FormData to send file
+      const formData = new FormData()
+      formData.append('template_id', selectedTemplate.id)
+      formData.append('recipient_email', mailCandidate.email)
+      formData.append('recipient_name', mailCandidate.full_name)
+      formData.append('data', JSON.stringify({
+        full_name: mailCandidate.full_name,
+        email: mailCandidate.email,
+        phone: mailCandidate.phone || '',
+        password: mailCandidate.fname?.toLocaleLowerCase() + '123$' || '',
+      }))
+      
+      if (attachmentData && selectedDocTemplate) {
+        formData.append('attachment', attachmentData, `offer_letter_${mailCandidate.full_name}.pdf`)
+      }
+
+      await api.post('/api/email-templates/send', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+
+      toast.success(`Mail sent to ${mailCandidate.full_name} with offer letter`)
+      setOpenMailDialog(false)
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to send email with attachment')
+    } finally {
+      setSendingMail(false)
+    }
   }
 
   // 📨 Send mail API call
@@ -630,7 +785,7 @@ export default function PendingVerification() {
 
       {/* 📨 Send Mail Dialog */}
       <Dialog open={openMailDialog} onClose={() => setOpenMailDialog(false)} title={`Send Mail to ${mailCandidate?.full_name || ''}`}>
-        <div className="space-y-4">
+        <div className="space-y-4 max-h-[80vh] overflow-y-auto">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Select Email Template</label>
             <select
@@ -663,13 +818,79 @@ export default function PendingVerification() {
             </div>
           )}
 
-          <div className="flex justify-end gap-3 pt-3">
+          <div className="border-t pt-4">
+            <h3 className="font-semibold text-gray-900 mb-3">📄 Offer Letter (Optional)</h3>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Select Document Template</label>
+              <select
+                value={selectedDocTemplateId}
+                onChange={(e) => handleDocTemplateChange(e.target.value)}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-400"
+              >
+                <option value="">-- None (No Attachment) --</option>
+                {docTemplates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedDocTemplate && (
+              <div className="mt-3 flex gap-2">
+                <Button
+                  onClick={generateOfferPdf}
+                  disabled={generatingOffer}
+                  className="flex-1 bg-indigo-600 text-white rounded-md px-3 py-2"
+                >
+                  {generatingOffer ? 'Generating...' : '👁️ Preview'}
+                </Button>
+                <Button
+                  onClick={downloadOfferPdf}
+                  className="flex-1 bg-green-600 text-white rounded-md px-3 py-2"
+                >
+                  ⬇️ Download
+                </Button>
+              </div>
+            )}
+
+            {offerPdfUrl && (
+              <div className="mt-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="text-sm text-blue-700">✓ Offer letter ready to be sent as attachment</div>
+                  <div className="flex gap-2">
+                    <a href={offerPdfUrl} target="_blank" rel="noreferrer" className="px-3 py-1 bg-gray-100 rounded text-sm">
+                      Open
+                    </a>
+                    <Button onClick={downloadOfferPdf} className="bg-green-600 text-white px-3 py-1 rounded text-sm">
+                      Download
+                    </Button>
+                    <Button onClick={() => { URL.revokeObjectURL(offerPdfUrl); setOfferPdfUrl(null); }} className="bg-red-100 px-3 py-1 rounded text-sm">
+                      Close
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="border rounded-md overflow-hidden" style={{ height: 360 }}>
+                  <iframe src={offerPdfUrl} className="w-full h-full" title="Offer Letter Preview" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t">
             <Button variant="outline" onClick={() => setOpenMailDialog(false)} className="rounded-md px-4 py-2 shadow-sm">
               Cancel
             </Button>
-            <Button onClick={sendMailToCandidate} disabled={sendingMail} className="rounded-md px-4 py-2 shadow-md">
-              {sendingMail ? 'Sending...' : 'Send Mail'}
-            </Button>
+            {selectedDocTemplate && offerPdfUrl ? (
+              <Button onClick={sendMailWithOfferLetter} disabled={sendingMail} className="rounded-md px-4 py-2 shadow-md bg-blue-600 text-white">
+                {sendingMail ? 'Sending...' : 'Send with Offer Letter'}
+              </Button>
+            ) : (
+              <Button onClick={sendMailToCandidate} disabled={sendingMail} className="rounded-md px-4 py-2 shadow-md">
+                {sendingMail ? 'Sending...' : 'Send Mail'}
+              </Button>
+            )}
           </div>
         </div>
       </Dialog>

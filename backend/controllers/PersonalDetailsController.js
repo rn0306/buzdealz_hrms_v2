@@ -1,12 +1,12 @@
-const { User, PersonalDetail } = require('../models');
+const { User, PersonalDetail, Role } = require('../models');
 const { Op } = require('sequelize');
 
 class PersonalDetailsController {
   // List all personal details
   static async list(req, res) {
     try {
-        const details = await PersonalDetail.findAll({
-        where: {  verification_status: { [Op.in]: ['VERIFIED', 'ACCEPTED'] } },
+      const details = await PersonalDetail.findAll({
+        where: { verification_status: { [Op.in]: ['VERIFIED', 'ACCEPTED'] } },
         include: [{ model: User, as: 'user' }],
         order: [['created_at', 'DESC']],
       });
@@ -40,24 +40,45 @@ class PersonalDetailsController {
     }
   }
 
-  // Get personal detail by user id
-  static async get(req, res) {
-    try {
-      const { id } = req.params;
+// Get personal detail by user id (WITH MANAGER NAME)
+static async get(req, res) {
+  try {
+    const { id } = req.params;
 
-      const user = await User.findByPk(id, {
-        attributes: { exclude: ['password_hash'] },
+    const user = await User.findByPk(id, {
+      attributes: { exclude: ["password_hash"] },
+    });
+
+    if (!user)
+      return res.status(404).json({ error: "Candidate (user) not found" });
+
+    const detail = await PersonalDetail.findOne({
+      where: { user_id: id }
+    });
+
+    let manager_name = null;
+
+    if (user.manager_id) {
+      const manager = await User.findByPk(user.manager_id, {
+        attributes: ["fname", "lname"]
       });
 
-      if (!user) return res.status(404).json({ error: 'Candidate (user) not found' });
-
-      const detail = await PersonalDetail.findOne({ where: { user_id: id } });
-
-      res.json({ ...user.toJSON(), personalDetail: detail });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
+      if (manager) {
+        manager_name = `${manager.fname || ""} ${manager.lname || ""}`.trim();
+      }
     }
+
+    res.json({
+      ...user.toJSON(),
+      manager_name,
+      personalDetail: detail
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
+}
+
 
   // Create personal detail
   static async create(req, res) {
@@ -139,8 +160,17 @@ class PersonalDetailsController {
           detail[key] = payload[key];
         }
       }
-      console.log(payload);
-      // Update User basic details
+
+      // After applying payload to detail fields
+      const filledCount = Object.entries(payload)
+        .filter(([k, v]) => v && typeof v === "string" && v.trim() !== "")
+        .length;
+
+      // If user filled most fields (e.g., more than 12), auto-submit verification
+      if (filledCount > 12 && detail.verification_status !== "VERIFIED") {
+        detail.verification_status = "SUBMITTED";
+      }
+
       if (payload.full_name) {
         const parts = payload.full_name.split(' ');
         user.fname = parts[0];
@@ -154,6 +184,17 @@ class PersonalDetailsController {
       if (payload.joining_date !== undefined) user.joining_date = payload.joining_date;
       if (payload.confirmation_date !== undefined) user.confirmation_date = payload.confirmation_date;
       if (payload.date_of_birth !== undefined) user.date_of_birth = payload.date_of_birth;
+
+      // Manager assignment
+      if (payload.manager_id !== undefined) user.manager_id = payload.manager_id;
+
+      // Role update: accept either role_id or role_code
+      if (payload.role_id) {
+        user.role_id = payload.role_id;
+      } else if (payload.role_code) {
+        const roleObj = await Role.findOne({ where: { code: payload.role_code } });
+        if (roleObj) user.role_id = roleObj.id;
+      }
 
       user.updated_by = req.user?.id || user.updated_by;
       detail.updated_by = req.user?.id || detail.updated_by;

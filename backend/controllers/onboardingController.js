@@ -4,9 +4,9 @@ const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 
 
+
 async function hashPassword(plainPassword) {
-  const saltRounds = 12;
-  return await bcrypt.hash(plainPassword, saltRounds);
+  return await bcrypt.hash(plainPassword, 12);
 }
 
 
@@ -138,7 +138,7 @@ class OnboardingController {
       const { candidateId } = req.params;
       const { verificationStatus, joiningDate, confirmationDate, rejectComment } = req.body;
       // Validate inputs
-      if (!['Verified', 'Rejected'].includes(verificationStatus)) {
+      if (!['VERIFIED', 'REJECTED'].includes(verificationStatus)) {
         return res.status(400).json({ error: 'Invalid verification status' });
       }
 
@@ -151,17 +151,17 @@ class OnboardingController {
       if (!detail) return res.status(404).json({ error: 'Candidate details not found' });
 
       // Update verification status
-      detail.verification_status = verificationStatus == 'Verified' ? 'Verified' : 'Rejected';
+      detail.verification_status = verificationStatus == 'VERIFIED' ? 'VERIFIED' : 'REJECTED';
       detail.verified_by = req.user.id;
       detail.verified_at = new Date();
 
       // Store rejection comment if rejected
-      if (verificationStatus === 'Rejected' && rejectComment) {
+      if (verificationStatus === 'REJECTED' && rejectComment) {
         detail.rejection_comment = rejectComment;
       }
 
       // Update user with joining date and confirmation date if accepted
-      if (verificationStatus === 'Verified') {
+      if (verificationStatus === 'VERIFIED') {
         if (joiningDate) {
           user.joining_date = joiningDate;
         }
@@ -246,7 +246,7 @@ class OnboardingController {
 
 
       if (!isValid) return res.status(403).json({ error: 'Token does not match candidate' });
-      user.password_hash = await hashPassword(new_password); // beforeUpdate hook will hash
+      user.password_hash = new_password; // beforeUpdate hook will hash it
       await user.save();
 
       res.json({ message: 'Password updated successfully' });

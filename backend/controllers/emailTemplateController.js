@@ -131,8 +131,18 @@ exports.sendTemplatedEmail = async (req, res) => {
     const subject = Mustache.render(template.subject || '(No Subject)', safeData);
     const body_html = Mustache.render(template.body_html || '', safeData);
 
-    // 📨 Send via email service
-    const emailResult = await sendMail(recipient_email, subject, body_html);
+    // 📎 Handle attachments
+    let attachments = [];
+    if (req.file) {
+      attachments.push({
+        filename: req.file.originalname,
+        content: req.file.buffer,
+        contentType: req.file.mimetype
+      });
+    }
+
+    // 📨 Send via email service with attachments
+    const emailResult = await sendMail(recipient_email, subject, body_html, 'HRMS System', attachments);
 
     // 🧾 Log the email attempt
     await EmailLog.create({

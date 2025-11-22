@@ -26,7 +26,7 @@ import EmployeeTargets from './pages/performance/EmployeeTargets'
 import Evaluation from './pages/performance/Evaluation'
 import EmailTemplates from './pages/emailTemplates/EmailTemplates'
 import Reports from './pages/reports/Reports'
-import Settings from './pages/Settings'
+import Activities from './pages/activityLogs/Activities'
 import Profile from './pages/profile/Profile'
 import SetNewPassword from './pages/SetNewPassword'
 
@@ -87,7 +87,7 @@ export default function App() {
                 {/* Other Routes */}
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/email-templates" element={<EmailTemplates />} />
-                <Route path="/settings" element={<Settings />} />
+                <Route path="/activities" element={<Activities />} />
                 <Route path="/profile" element={<Profile />} />
                 
                 <Route path="*" element={

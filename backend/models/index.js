@@ -12,9 +12,9 @@ const Termination = require('./Termination');
 const ActivityLog = require('./ActivityLog');
 const PersonalDetail = require('./PersonalDetail');
 const InternSubscription = require('./InternSubscription');
-
-const Plans = require('./Plans');                  // ✅ NEW PLANS MODEL
-const TargetsMaster = require('./targets_master'); // updated dynamic plans
+const DocumentTemplate = require('./DocumentTemplate');
+const Plans = require('./Plans');                  
+const TargetsMaster = require('./targets_master'); 
 const EmployeeTarget = require('./employee_targets');
 const EmployeeTargetProgress = require('./employee_target_progress');
 
@@ -112,7 +112,8 @@ module.exports = {
   Termination,
   ActivityLog,
   PersonalDetail,
-  Plans,                // ✅ NEW EXPORT
+  Plans,                
+  DocumentTemplate,
   TargetsMaster,
   EmployeeTarget,
   EmployeeTargetProgress,

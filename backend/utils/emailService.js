@@ -24,7 +24,7 @@ function createTransport() {
 
 const transporter = createTransport();
 
-exports.sendMail = async (to, subject, html, fromName = 'HRMS System') => {
+exports.sendMail = async (to, subject, html, fromName = 'HRMS System', attachments = []) => {
   try {
     const fromAddress =
       process.env.ZOHO_EMAIL_USER ||
@@ -36,6 +36,7 @@ exports.sendMail = async (to, subject, html, fromName = 'HRMS System') => {
       to,
       subject,
       html,
+      attachments: attachments && attachments.length > 0 ? attachments : undefined,
     });
 
     console.log(`✅ Email sent successfully to: ${to}`);

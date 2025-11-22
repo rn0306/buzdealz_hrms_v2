@@ -28,18 +28,6 @@ const EmployeeTarget = sequelize.define('EmployeeTarget', {
     type: DataTypes.DATEONLY,
     allowNull: true,
   },
-  monthly_target: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-  },
-  smart_invest_target: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-  },
-  flex_saver_target: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-  },
   remarks: {
     type: DataTypes.TEXT,
     allowNull: true,

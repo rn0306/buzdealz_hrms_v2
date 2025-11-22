@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../../lib/api";
+import { getUser } from "../../utils/auth";
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import Select from "../../components/ui/Select";
@@ -27,7 +28,9 @@ interface PersonalDetail {
 }
 
 interface RoleType {
+  id?: string;
   code: string;
+  name?: string;
 }
 
 interface Intern {
@@ -57,11 +60,9 @@ type Employee = Intern;
 const SUMMARY_CARD_CONFIG = [
   { icon: <User className="text-blue-500" size={24} />, title: "Total Interns", accent: "border-blue-500 bg-blue-50", key: "total" },
   { icon: <Check className="text-green-500" size={24} />, title: "Managers", accent: "border-green-500 bg-green-50", key: "managers" },
-  { icon: <Eye className="text-purple-500" size={24} />, title: "Verified Employees", accent: "border-purple-500 bg-purple-50", key: "verified" },
+  { icon: <User className="text-purple-500" size={24} />, title: "Verified Employees", accent: "border-purple-500 bg-purple-50", key: "verified" },
   { icon: <User className="text-yellow-500" size={24} />, title: "Joined This Week", accent: "border-yellow-500 bg-yellow-50", key: "joined" },
 ];
-
-const ROLES = ["INTERN", "MANAGER", "RECRUITER"];
 
 // utility to parse a legacy duration string like "2 months 15 days" or "2 months" or "15 days"
 function parseDurationToParts(duration?: string | null) {
@@ -89,20 +90,64 @@ const ActiveInterns: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState<Intern | null>(null);
 
+  // Extension/Termination state
+  const [showExtensionModal, setShowExtensionModal] = useState(false);
+  const [extensionInternId, setExtensionInternId] = useState<string | null>(null);
+  // include old_end_date here
+  const [extensionForm, setExtensionForm] = useState<{ reason: string; newEndDate: string; old_end_date?: string }>({ reason: "", newEndDate: "", old_end_date: "" });
+
+  const [showTerminationModal, setShowTerminationModal] = useState(false);
+  const [terminationInternId, setTerminationInternId] = useState<string | null>(null);
+  const [terminationForm, setTerminationForm] = useState({ reason: "" });
+
+  // Extension/Termination data
+  const [extensions, setExtensions] = useState<any>({});
+  const [terminations, setTerminations] = useState<any>({});
+
   // Add/Edit forms
   const [addForm, setAddForm] = useState<Partial<Intern>>({});
   const [editForm, setEditForm] = useState<Partial<Intern>>({});
 
-  // Load interns
+  // Load interns and roles
+  const [roles, setRoles] = useState<RoleType[]>([]);
+
+  // Logged-in user
+  const [loggedInUser, setLoggedInUser] = useState<any>(null);
+  // optional loading flag for extension status update
+  const [updatingExtensionId, setUpdatingExtensionId] = useState<string | null>(null);
+
   useEffect(() => {
     let mounted = true;
     async function load() {
       try {
-        const res = await api.get('/api/personaldetails');
+        const [rolesRes, res] = await Promise.all([
+          api.get('/api/roles'),
+          api.get('/api/personaldetails')
+        ]);
+
+        const rolesData: RoleType[] = rolesRes.data?.data || [];
+        if (mounted) setRoles(rolesData);
+
         const data = res.data || [];
         console.log('Fetched interns data:', data);
         const mapped: Intern[] = data.map((d: any) => {
           const user = d.user || {};
+          const roleCode = rolesData.find(r => r.id === user.role_id)?.code || '';
+          // parse legacy internship_duration to months/days if present
+          let months = 0, days = 0;
+          if (d.internship_duration_months !== undefined || d.internship_duration_days !== undefined) {
+            months = d.internship_duration_months !== undefined ? Number(d.internship_duration_months) : 0;
+            days = d.internship_duration_days !== undefined ? Number(d.internship_duration_days) : 0;
+          } else if (d.internship_duration) {
+            const parsed = parseDurationToParts(d.internship_duration);
+            months = parsed.months;
+            days = parsed.days;
+          } else if (d.duration) {
+            const parsed = parseDurationToParts(d.duration);
+            months = parsed.months;
+            days = parsed.days;
+          }
+
           return {
             id: user.id || d.user_id || String(Math.random()),
             manager_id: user.manager_id || null,
@@ -117,8 +162,8 @@ const ActiveInterns: React.FC = () => {
 
             // NEW (default values set from parsed legacy or empty)
             work_type: d.work_type || "",
-            internship_duration_months: d.internship_duration_months !== undefined ? Number(d.internship_duration_months) : 0,
-            internship_duration_days: d.internship_duration_days !== undefined ? Number(d.internship_duration_days) : 0,
+            internship_duration_months: months,
+            internship_duration_days: days,
             stipend: d.stipend !== undefined ? Number(d.stipend) : undefined,
 
             personalDetail: {
@@ -137,17 +182,63 @@ const ActiveInterns: React.FC = () => {
               current_stage: d.current_stage || '',
               verification_status: d.verification_status || 'PENDING',
             },
-            Role: { code: user.role_id ? 'INTERN' : 'INTERN' },
+            Role: { code: roleCode || 'INTERN' },
           };
         });
 
         if (mounted) setInterns(mapped);
+
+        // Fetch extensions and terminations for each intern
+        if (mounted && mapped.length > 0) {
+          const extensionsData: any = {};
+          const terminationsData: any = {};
+
+          await Promise.all(
+            mapped.map(async (intern) => {
+              try {
+                const extRes = await api.get(`/api/extensions/user/${intern.id}`);
+                const termRes = await api.get(`/api/terminations/user/${intern.id}`);
+
+                if (mounted) {
+                  extensionsData[intern.id] = extRes.data?.data || [];
+                  terminationsData[intern.id] = termRes.data?.data || null;
+                }
+              } catch (err) {
+                // Silently fail for individual intern status fetches
+              }
+            })
+          );
+
+          if (mounted) {
+            setExtensions(extensionsData);
+            setTerminations(terminationsData);
+          }
+        }
       } catch (err) {
         if (mounted) setInterns([]);
       }
     }
     load();
-    return () => { mounted = false };
+
+    // load logged-in user
+    let mountedUser = true;
+    async function loadUser() {
+      debugger
+      try {
+        const u = await getUser(); // Option A used
+        if (mountedUser && u) {
+          setLoggedInUser({
+            ...u,
+            role: u.role?.toUpperCase()    // <-- FIX APPLIED
+          });
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    loadUser();
+
+    return () => { mounted = false; mountedUser = false; };
   }, []);
 
   const managerOptions = useMemo(() =>
@@ -209,6 +300,27 @@ const ActiveInterns: React.FC = () => {
     return parts.length ? parts.join(' ') : '';
   }
 
+  // Calculate internship end date from joining date + duration months/days
+  function calculateInternshipEndDate(joiningDateStr?: string, months?: number, days?: number) {
+    if (!joiningDateStr) return '';
+    try {
+      const joining = new Date(joiningDateStr);
+      if (isNaN(joining.getTime())) return '';
+
+      const endDate = new Date(joining);
+      if (months && months > 0) endDate.setMonth(endDate.getMonth() + months);
+      if (days && days > 0) endDate.setDate(endDate.getDate() + days);
+
+      // Normalize time zone issues by using UTC values if needed — format as YYYY-MM-DD
+      const year = endDate.getFullYear();
+      const month = String(endDate.getMonth() + 1).padStart(2, '0');
+      const date = String(endDate.getDate()).padStart(2, '0');
+      return `${year}-${month}-${date}`;
+    } catch {
+      return '';
+    }
+  }
+
   async function handleEditIntern(edited: Partial<Intern>, original: Intern) {
     try {
       const payload: any = {};
@@ -223,10 +335,10 @@ const ActiveInterns: React.FC = () => {
       if (edited.personalDetail) {
         const pd = edited.personalDetail as Partial<Intern['personalDetail']>;
         const allowed = [
-          'adhar_card_no','pan_card_no','bank_name','account_no','branch_name','ifsc_code',
-          'highest_education','university_name','passing_year','last_company_name','role_designation',
-          'duration','other_documents_url','id_proof_url','verification_status','verified_by','verified_at','source','current_stage',
-          'work_type','internship_duration','stipend'
+          'adhar_card_no', 'pan_card_no', 'bank_name', 'account_no', 'branch_name', 'ifsc_code',
+          'highest_education', 'university_name', 'passing_year', 'last_company_name', 'role_designation',
+          'duration', 'other_documents_url', 'id_proof_url', 'verification_status', 'verified_by', 'verified_at', 'source', 'current_stage',
+          'work_type', 'internship_duration', 'stipend'
         ];
         for (const k of allowed) {
           if ((pd as any)[k] !== undefined) payload[k] = (pd as any)[k];
@@ -244,6 +356,15 @@ const ActiveInterns: React.FC = () => {
       }
 
       if ((edited as any).stipend !== undefined) payload.stipend = Number((edited as any).stipend);
+
+      // Role update: if Role.code provided, convert to role_id using roles list
+      if ((edited as any).Role?.code) {
+        const roleObj = roles.find(r => r.code === (edited as any).Role.code);
+        if (roleObj) payload.role_id = roleObj.id;
+      }
+
+      // Manager assignment
+      if ((edited as any).manager_id !== undefined) payload.manager_id = (edited as any).manager_id;
 
       const res = await api.put(`/api/personaldetails/${original.id}`, payload);
 
@@ -277,6 +398,143 @@ const ActiveInterns: React.FC = () => {
       toast.error(err?.response?.data?.error || 'Failed to update intern');
     }
   }
+
+  // Request internship extension
+  async function handleRequestExtension() {
+    if (!extensionInternId) return;
+    if (!extensionForm.reason.trim()) {
+      toast.error('Please provide a reason for extension');
+      return;
+    }
+    if (!extensionForm.newEndDate) {
+      toast.error('Please select a new end date');
+      return;
+    }
+
+    try {
+      // Compute old_end_date if not provided (safety)
+      let oldEnd = extensionForm.old_end_date;
+      if (!oldEnd) {
+        const intern = interns.find(i => i.id === extensionInternId);
+        oldEnd = calculateInternshipEndDate(intern?.join_date, intern?.internship_duration_months, intern?.internship_duration_days) || '';
+      }
+
+      const payload = {
+        user_id: extensionInternId,
+        reason: extensionForm.reason,
+        old_end_date: oldEnd,
+        new_end_date: extensionForm.newEndDate,
+      };
+
+      const res = await api.post('/api/extensions', payload);
+      toast.success(res.data?.message || 'Extension requested successfully');
+
+      // Refresh extensions for this intern
+      const extRes = await api.get(`/api/extensions/user/${extensionInternId}`);
+      setExtensions((prev: any) => ({
+        ...prev,
+        [extensionInternId]: extRes.data?.data || [],
+      }));
+
+      setShowExtensionModal(false);
+      setExtensionInternId(null);
+      setExtensionForm({ reason: "", newEndDate: "", old_end_date: "" });
+    } catch (err: any) {
+      console.error('Failed to request extension', err);
+      toast.error(err?.response?.data?.error || 'Failed to request extension');
+    }
+  }
+
+  // Terminate internship
+  async function handleTerminateIntern() {
+    if (!terminationInternId) return;
+    if (!terminationForm.reason.trim()) {
+      toast.error('Please provide a reason for termination');
+      return;
+    }
+
+    try {
+      const payload = {
+        user_id: terminationInternId,
+        reason: terminationForm.reason,
+      };
+
+      const res = await api.post('/api/terminations', payload);
+      toast.success(res.data?.message || 'Internship terminated successfully');
+
+      // Refresh termination status for this intern
+      const termRes = await api.get(`/api/terminations/user/${terminationInternId}`);
+      setTerminations((prev: any) => ({
+        ...prev,
+        [terminationInternId]: termRes.data?.data || null,
+      }));
+
+      setShowTerminationModal(false);
+      setTerminationInternId(null);
+      setTerminationForm({ reason: "" });
+    } catch (err: any) {
+      console.error('Failed to terminate intern', err);
+      toast.error(err?.response?.data?.error || 'Failed to terminate intern');
+    }
+  }
+
+  // Get latest extension status
+  function getLatestExtensionStatus(internId: string) {
+    const exts = extensions[internId] || [];
+    if (exts.length === 0) return null;
+    return exts[exts.length - 1];
+  }
+
+  // Get termination status
+  function getTerminationStatus(internId: string) {
+    return terminations[internId] || null;
+  }
+
+  // Role check: Admin or Recruiter can approve/reject
+  const canApprove = loggedInUser?.role === "ADMIN" || loggedInUser?.role === "RECRUITER";
+
+  // Approve/Reject functions
+  async function updateExtensionStatus(extensionId: string, status: "Approved" | "Rejected", userIdFallback?: string) {
+    if (!extensionId) return;
+    try {
+      setUpdatingExtensionId(extensionId);
+      const res = await api.put(`/api/extensions/${extensionId}`, { status });
+      toast.success(res.data?.message || `Extension ${status.toLowerCase()}`);
+
+      // Determine user id to refresh extensions list
+      const updated = res.data?.data || {};
+      const uid = updated.user_id || userIdFallback || extensionInternId;
+
+      if (uid) {
+        const extRes = await api.get(`/api/extensions/user/${uid}`);
+        setExtensions(prev => ({
+          ...prev,
+          [uid]: extRes.data?.data || [],
+        }));
+      }
+    } catch (err: any) {
+      console.error('Failed to update extension status', err);
+      toast.error(err?.response?.data?.error || 'Failed to update extension status');
+    } finally {
+      setUpdatingExtensionId(null);
+    }
+  }
+
+  const handleApproveExtension = (extId: string, userId?: string) => {
+    if (!canApprove) {
+      toast.error('You are not authorized to approve extensions');
+      return;
+    }
+    updateExtensionStatus(extId, "Approved", userId);
+  };
+
+  const handleRejectExtension = (extId: string, userId?: string) => {
+    if (!canApprove) {
+      toast.error('You are not authorized to reject extensions');
+      return;
+    }
+    updateExtensionStatus(extId, "Rejected", userId);
+  };
 
   return (
     <div className="bg-gray-50 min-h-screen p-6">
@@ -313,33 +571,133 @@ const ActiveInterns: React.FC = () => {
               <TH>Name</TH>
               <TH>Email</TH>
               <TH>Phone</TH>
-              <TH>Education</TH>
-              <TH>Role</TH>
-              <TH>Status</TH>
+              <TH>Joining Date</TH>
+              <TH>End Date</TH>
+              <TH>Work Type</TH>
+              <TH>Manager</TH>
+              <TH>Verification</TH>
+              <TH>Extension</TH>
+              <TH>Termination</TH>
               <TH>Actions</TH>
             </TR>
           </THead>
           <TBody>
-            {filteredInterns.map(intern => (
-              <TR key={intern.id}>
-                <TD>{intern.fname} {intern.lname}</TD>
-                <TD>{intern.email}</TD>
-                <TD>{intern.phone}</TD>
-                <TD>{intern.personalDetail.highest_education}</TD>
-                <TD>{intern.Role.code}</TD>
-                <TD>{intern.personalDetail.verification_status}</TD>
-                <TD>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => setSelectedIntern(intern)}>
-                      <Eye size={18} />
-                    </Button>
-                    <Button variant="outline" onClick={() => setShowEditModal(intern)}>
-                      <Edit size={18} />
-                    </Button>
-                  </div>
-                </TD>
-              </TR>
-            ))}
+            {filteredInterns.map(intern => {
+              const extStatus = getLatestExtensionStatus(intern.id);
+              const termStatus = getTerminationStatus(intern.id);
+              const endDate = calculateInternshipEndDate(intern.join_date, intern.internship_duration_months, intern.internship_duration_days);
+              const managerName = interns.find(m => m.id === intern.manager_id)?.fname || '-';
+
+              return (
+                <TR key={intern.id}>
+                  <TD>{intern.fname} {intern.lname}</TD>
+                  <TD>{intern.email}</TD>
+                  <TD>{intern.phone}</TD>
+                  <TD>{intern.join_date ? new Date(intern.join_date).toLocaleDateString('en-IN') : '-'}</TD>
+                  <TD>
+                    {endDate ? (
+                      <span className={new Date(endDate) < new Date() ? 'text-red-600 font-semibold' : ''}>
+                        {new Date(endDate).toLocaleDateString('en-IN')}
+                      </span>
+                    ) : '-'}
+                  </TD>
+                  <TD>{intern.work_type || '-'}</TD>
+                  <TD>{managerName}</TD>
+                  <TD>{intern.personalDetail.verification_status}</TD>
+                  <TD>
+                    {extStatus ? (
+                      <div className="flex flex-col gap-1">
+
+                        {/* Status badge */}
+                        <span className={`px-2 py-1 rounded text-xs font-semibold ${extStatus.status?.toUpperCase() === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                            extStatus.status?.toUpperCase() === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                              'bg-red-100 text-red-800'
+                          }`}>
+                          {extStatus.status?.toUpperCase()}
+                        </span>
+
+                        {/* APPROVE / REJECT buttons -> only Admin & Recruiter */}
+                        {canApprove && extStatus.status?.toUpperCase() === "PENDING" && (
+                          <div className="flex gap-2 mt-1">
+                            <Button
+                              size="xs"
+                              className="bg-green-600 text-white"
+                              onClick={() => handleApproveExtension(extStatus.id, extStatus.user_id)}
+                              disabled={updatingExtensionId === extStatus.id}
+                            >
+                              Approve
+                            </Button>
+
+                            <Button
+                              size="xs"
+                              className="bg-red-600 text-white"
+                              onClick={() => handleRejectExtension(extStatus.id, extStatus.user_id)}
+                              disabled={updatingExtensionId === extStatus.id}
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 text-xs">None</span>
+                    )}
+                  </TD>
+                  <TD>
+                    {termStatus ? (
+                      <span className="px-2 py-1 rounded text-xs font-semibold bg-red-100 text-red-800">
+                        TERMINATED
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 text-xs">Active</span>
+                    )}
+                  </TD>
+                  <TD>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => setSelectedIntern(intern)}>
+                        <Eye size={18} />
+                      </Button>
+                      <Button variant="outline" onClick={() => setShowEditModal(intern)}>
+                        <Edit size={18} />
+                      </Button>
+                      {!termStatus && (
+                        <>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              const oldEnd = calculateInternshipEndDate(
+                                intern.join_date,
+                                intern.internship_duration_months,
+                                intern.internship_duration_days
+                              );
+
+                              setExtensionInternId(intern.id);
+                              setExtensionForm({ reason: "", newEndDate: "", old_end_date: oldEnd });
+                              setShowExtensionModal(true);
+                            }}
+                            title="Request Extension"
+                          >
+                            ⏱️
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setTerminationInternId(intern.id);
+                              setTerminationForm({ reason: "" });
+                              setShowTerminationModal(true);
+                            }}
+                            title="Terminate"
+                            className="text-red-600"
+                          >
+                            ❌
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </TD>
+                </TR>
+              );
+            })}
           </TBody>
         </Table>
       </div>
@@ -359,9 +717,9 @@ const ActiveInterns: React.FC = () => {
           <Input label="Phone" required value={addForm.phone || ""} onChange={e => setAddForm(f => ({ ...f, phone: e.target.value }))} />
 
           {/* Role */}
-          <Select label="Role" required value={addForm.Role?.code || ""} onChange={e => setAddForm(f => ({ ...f, Role: { code: e.target.value } }))}>
+          <Select id="role-add" label="Role" required value={addForm.Role?.code || ""} onChange={e => setAddForm(f => ({ ...f, Role: { code: e.target.value } }))}>
             <option value="">Select Role</option>
-            {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+            {roles.map((r: RoleType) => <option key={r.id || r.code} value={r.code}>{r.name || r.code}</option>)}
           </Select>
 
           {/* Join Date */}
@@ -385,6 +743,7 @@ const ActiveInterns: React.FC = () => {
                 <div className="flex-1">
                   <Select
                     label="Months"
+                    id="months-add"
                     value={String(addForm.internship_duration_months ?? 0)}
                     onChange={(e) => setAddForm(f => ({ ...f, internship_duration_months: Number(e.target.value) }))}
                   >
@@ -396,6 +755,7 @@ const ActiveInterns: React.FC = () => {
                 <div className="flex-1">
                   <Select
                     label="Days"
+                    id="days-add"
                     value={String(addForm.internship_duration_days ?? 0)}
                     onChange={(e) => setAddForm(f => ({ ...f, internship_duration_days: Number(e.target.value) }))}
                   >
@@ -419,15 +779,13 @@ const ActiveInterns: React.FC = () => {
 
           {/* Manager Dropdown */}
           {shouldShowManagerDropdown(addForm.Role?.code) && (
-            <Select label="Assign Manager" required value={addForm.manager_id || ""} onChange={e => setAddForm(f => ({ ...f, manager_id: e.target.value }))}>
+            <Select id="manager-add" label="Assign Manager" required value={addForm.manager_id || ""} onChange={e => setAddForm(f => ({ ...f, manager_id: e.target.value }))}>
               <option value="">Select Manager</option>
               {managerOptions.map(m => (
                 <option key={m.id} value={m.id}>{m.fname} {m.lname}</option>
               ))}
             </Select>
-          )}
-
-          <div className="flex justify-end gap-4 mt-4">
+          )}          <div className="flex justify-end gap-4 mt-4">
             <Button variant="outline" type="button" onClick={() => setShowAddModal(false)}>Cancel</Button>
             <Button type="submit">Save</Button>
           </div>
@@ -454,9 +812,9 @@ const ActiveInterns: React.FC = () => {
             <Input label="Phone" required value={editForm.phone || ""} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} />
 
             {/* Role */}
-            <Select label="Role" required value={editForm.Role?.code || ""} onChange={e => setEditForm(f => ({ ...f, Role: { code: e.target.value } }))}>
+            <Select id="role-edit" label="Role" required value={editForm.Role?.code || ""} onChange={e => setEditForm(f => ({ ...f, Role: { code: e.target.value } }))}>
               <option value="">Select Role</option>
-              {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+              {roles.map((r: RoleType) => <option key={r.id || r.code} value={r.code}>{r.name || r.code}</option>)}
             </Select>
 
             {/* Join Date */}
@@ -475,7 +833,7 @@ const ActiveInterns: React.FC = () => {
                   onChange={(e) => setEditForm(f => ({ ...f, work_type: e.target.value }))}
                 />
 
-               <Input
+                <Input
                   label="internship Duration (Months)"
                   placeholder="Enter internship duration in months"
                   value={editForm.internship_duration_months ?? ""}
@@ -489,6 +847,13 @@ const ActiveInterns: React.FC = () => {
                   onChange={(e) => setEditForm(f => ({ ...f, internship_duration_days: Number(e.target.value) }))}
                 />
 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Internship End Date</label>
+                  <div className="w-full rounded-md border border-gray-300 px-4 py-3 bg-gray-100 text-gray-700 font-semibold">
+                    {calculateInternshipEndDate(editForm.join_date, editForm.internship_duration_months, editForm.internship_duration_days) || 'Set joining date and duration'}
+                  </div>
+                </div>
+
                 <Input
                   label="Stipend (₹)"
                   required
@@ -500,7 +865,7 @@ const ActiveInterns: React.FC = () => {
             )}
 
             {shouldShowManagerDropdown(editForm.Role?.code) && (
-              <Select label="Assign Manager" value={editForm.manager_id || ""} onChange={e => setEditForm(f => ({ ...f, manager_id: e.target.value }))}>
+              <Select id="manager-edit" label="Assign Manager" value={editForm.manager_id || ""} onChange={e => setEditForm(f => ({ ...f, manager_id: e.target.value }))}>
                 <option value="">Select Manager</option>
                 {managerOptions.map(m => (
                   <option key={m.id} value={m.id}>{m.fname} {m.lname}</option>
@@ -546,6 +911,84 @@ const ActiveInterns: React.FC = () => {
             <div><strong>Education:</strong> {selectedIntern.personalDetail.highest_education}</div>
           </div>
         )}
+      </Dialog>
+
+      {/* Extension Request Modal */}
+      <Dialog open={showExtensionModal} onClose={() => setShowExtensionModal(false)} title="Request Internship Extension">
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleRequestExtension();
+          }}
+        >
+          <div className="text-sm">
+            <label className="block mb-1 font-medium text-gray-700">Current End Date</label>
+            <div className="rounded border px-3 py-2 bg-gray-50 text-sm">
+              {extensionForm.old_end_date || (extensionInternId ? calculateInternshipEndDate(
+                interns.find(i => i.id === extensionInternId)?.join_date,
+                interns.find(i => i.id === extensionInternId)?.internship_duration_months,
+                interns.find(i => i.id === extensionInternId)?.internship_duration_days
+              ) : '—')}
+            </div>
+          </div>
+
+          <textarea
+            placeholder="Reason for extension"
+            value={extensionForm.reason}
+            onChange={(e) => setExtensionForm(f => ({ ...f, reason: e.target.value }))}
+            className="border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            rows={4}
+            required
+          />
+
+          <Input
+            type="date"
+            label="New End Date"
+            value={extensionForm.newEndDate}
+            onChange={(e) => setExtensionForm(f => ({ ...f, newEndDate: e.target.value }))}
+            required
+          />
+
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setShowExtensionModal(false)}>Cancel</Button>
+            <Button onClick={handleRequestExtension}>Request Extension</Button>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Termination Modal */}
+      <Dialog open={showTerminationModal} onClose={() => setShowTerminationModal(false)} title="Terminate Internship">
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleTerminateIntern();
+          }}
+        >
+          <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">
+            <strong>Warning:</strong> This action cannot be undone. The intern will be marked as terminated.
+          </div>
+
+          <textarea
+            placeholder="Reason for termination"
+            value={terminationForm.reason}
+            onChange={(e) => setTerminationForm(f => ({ ...f, reason: e.target.value }))}
+            className="border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            rows={4}
+            required
+          />
+
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setShowTerminationModal(false)}>Cancel</Button>
+            <Button
+              onClick={handleTerminateIntern}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Terminate Internship
+            </Button>
+          </div>
+        </form>
       </Dialog>
 
     </div>

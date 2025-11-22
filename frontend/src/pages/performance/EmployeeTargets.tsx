@@ -3,6 +3,8 @@ import Button from "../../components/ui/Button";
 import Dialog from "../../components/ui/Dialog";
 import { Table, THead, TBody, TR, TH, TD } from "../../components/ui/Table";
 import { toast } from "sonner";
+import { getUser } from "../../utils/auth";
+
 import {
   getEmployeeTargets,
   createEmployeeTarget,
@@ -10,6 +12,7 @@ import {
   deleteEmployeeTarget,
   getActiveTargets,
   getActiveUsers,
+  getPlansMaster
 } from "../../lib/api";
 
 type AssignedTarget = {
@@ -24,6 +27,35 @@ type AssignedTarget = {
   flex_saver_target: number;
   remarks?: string;
   status: "Assigned" | "In Progress" | "Completed" | "Overdue";
+  created_at?: string;
+
+  // Nested objects returned by API
+  user?: {
+    id: string;
+    fname?: string;
+    lname?: string;
+    email?: string;
+  };
+  target?: {
+    id: string;
+    target_description?: string;
+    plans?: Record<string, number>; // planId -> count
+    deadline_days?: number;
+    created_by?: string;
+    status?: "Active" | "Inactive";
+    created_at?: string;
+  };
+  assigner?: {
+    id: string;
+    fname?: string;
+    lname?: string;
+  };
+};
+
+type Plan = {
+  id: string;
+  plan_name: string;
+  status: "Active" | "Inactive";
 };
 
 type Target = {
@@ -31,7 +63,6 @@ type Target = {
   target_description: string;
   deadline_days: number;
   status: "Active" | "Inactive";
-  // added counts from your API payload
   monthly_plans_count?: number;
   smart_invest_plans_count?: number;
   flex_saver_plans_count?: number;
@@ -47,9 +78,15 @@ export default function AssignTarget() {
   const [assignedTargets, setAssignedTargets] = useState<AssignedTarget[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [targets, setTargets] = useState<Target[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [plansList, setPlansList] = useState<any[]>([]);
   const [openForm, setOpenForm] = useState(false);
   const [editing, setEditing] = useState<AssignedTarget | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // View modal state (for interns and anyone who wants to view)
+  const [viewTarget, setViewTarget] = useState<AssignedTarget | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
 
   const [form, setForm] = useState<Partial<AssignedTarget>>({
     user_id: "",
@@ -64,31 +101,54 @@ export default function AssignTarget() {
     flex_saver_target: 0,
   });
 
+  // Get current user and derive role-based flag
+  const currentUser = useMemo(() => getUser(), []);
+  const isIntern = useMemo(() => {
+    // per your confirmation, role value for intern is "intern"
+    return currentUser?.role === "intern";
+  }, [currentUser]);
+
   // Fetch all data on mount
   useEffect(() => {
     fetchAllData();
+    fetchPlans();
   }, []);
 
   async function fetchAllData() {
-  setLoading(true);
-  try {
-    const [targetsRes, usersRes, assignedRes] = await Promise.all([
-      getActiveTargets(),
-      getActiveUsers(),
-      getEmployeeTargets(),
-    ]);
-    // Backend returns RAW arrays
-    setTargets(Array.isArray(targetsRes.data.data) ? targetsRes.data.data : []);
-    setEmployees(Array.isArray(usersRes.data) ? usersRes.data : []);
-    setAssignedTargets(Array.isArray(assignedRes.data) ? assignedRes.data : []);
-
-  } catch {
-    toast.error("Failed to fetch data");
-  } finally {
-    setLoading(false);
+    setLoading(true);
+    try {
+      const [targetsRes, usersRes, assignedRes] = await Promise.all([
+        getActiveTargets(),
+        getActiveUsers(),
+        getEmployeeTargets(),
+      ]);
+      // Backend returns RAW arrays
+      setTargets(Array.isArray(targetsRes.data.data) ? targetsRes.data.data : []);
+      setEmployees(Array.isArray(usersRes.data) ? usersRes.data : []);
+      // assignedRes.data may be array of assigned target objects (with nested user/target/assigner)
+      setAssignedTargets(Array.isArray(assignedRes.data) ? assignedRes.data : []);
+    } catch (err: any) {
+      console.error("fetchAllData error:", err);
+      toast.error("Failed to fetch data");
+    } finally {
+      setLoading(false);
+    }
   }
-}
 
+  async function fetchPlans() {
+    try {
+      const res = await getPlansMaster();
+      setPlans(res.data.data);
+      console.log(res)
+    } catch {
+      toast.error("Failed to load plans");
+    }
+  }
+
+  // ---------------- PLAN NAME HELPER ----------------
+  const getPlanName = (planId: string) => {
+    return plans.find((p) => p.id === planId)?.plan_name || "Unknown Plan";
+  };
 
   // Auto-calculate end date based on deadline_days
   useEffect(() => {
@@ -105,7 +165,6 @@ export default function AssignTarget() {
       }
     }
   }, [form.target_id, form.start_date, targets]);
-
 
   function handleChange(field: keyof AssignedTarget, value: string | number) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -135,7 +194,7 @@ export default function AssignTarget() {
     e.preventDefault();
     if (!validateForm()) return;
 
-    try {debugger
+    try {
       if (editing) {
         await updateEmployeeTarget(editing.id, form);
         toast.success("Target assignment updated successfully");
@@ -143,7 +202,7 @@ export default function AssignTarget() {
         await createEmployeeTarget(form);
         toast.success("Target assigned successfully");
       }
-      fetchAllData();
+      await fetchAllData();
       setOpenForm(false);
       setEditing(null);
       setForm({
@@ -159,6 +218,7 @@ export default function AssignTarget() {
         flex_saver_target: 0,
       });
     } catch (err: any) {
+      console.error("handleSubmit error:", err);
       toast.error("Failed to save target assignment");
     }
   }
@@ -170,15 +230,20 @@ export default function AssignTarget() {
   }
 
   async function handleDelete(id: string) {
-    if (window.confirm("Are you sure you want to delete this target assignment?")) {
-      try {
-        await deleteEmployeeTarget(id);
-        toast.success("Target assignment deleted successfully");
-        fetchAllData();
-      } catch (err: any) {
-        toast.error("Failed to delete target assignment");
-      }
+    if (!window.confirm("Are you sure you want to delete this target assignment?")) return;
+    try {
+      await deleteEmployeeTarget(id);
+      toast.success("Target assignment deleted successfully");
+      await fetchAllData();
+    } catch (err: any) {
+      console.error("handleDelete error:", err);
+      toast.error("Failed to delete target assignment");
     }
+  }
+
+  function handleView(assigned: AssignedTarget) {
+    setViewTarget(assigned);
+    setViewOpen(true);
   }
 
   function getStatusBadgeColor(status: AssignedTarget["status"]) {
@@ -199,26 +264,32 @@ export default function AssignTarget() {
       Overdue: 0,
     };
     assignedTargets.forEach((target) => {
-      counts[target.status]++;
+      counts[target.status] = (counts as any)[target.status] + 1;
     });
     return counts;
   }, [assignedTargets]);
 
-  // Helper to get employee name from ID
-  const getEmployeeName = (userId: string) => {
-    const emp = employees.find((e) => e.id === userId);
+  // Helper to get employee name from ID or nested user
+  const getEmployeeName = (assigned: AssignedTarget) => {
+    if (assigned.user) {
+      const fname = assigned.user.fname || "";
+      const lname = assigned.user.lname || "";
+      const full = `${fname}${lname ? ` ${lname}` : ""}`.trim();
+      if (full) return full;
+      if (assigned.user.email) return assigned.user.email;
+    }
+    // fallback to employees list (used for create/edit scenarios)
+    const emp = employees.find((e) => e.id === assigned.user_id);
     return emp?.name || "Unknown";
   };
 
   const getTargetDescription = (assigned: AssignedTarget) => {
-  if (assigned.target?.target_description) {
-    return assigned.target.target_description;
-  }
-
-  const t = targets.find((t) => t.id === assigned.target_id);
-  return t?.target_description || "Unknown";
-};
-
+    if (assigned.target && assigned.target.target_description) {
+      return assigned.target.target_description;
+    }
+    const t = targets.find((t) => t.id === assigned.target_id);
+    return t?.target_description || "Unknown";
+  };
 
   if (loading) {
     return (
@@ -236,27 +307,31 @@ export default function AssignTarget() {
           <h1 className="text-3xl font-bold text-gray-900">Employee Targets</h1>
           <p className="mt-2 text-gray-600">Track and manage employee performance targets</p>
         </div>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setForm({
-              user_id: "",
-              target_id: "",
-              assigned_by: "",
-              start_date: "",
-              end_date: "",
-              status: "Assigned",
-              remarks: "",
-              monthly_target: 0,
-              smart_invest_target: 0,
-              flex_saver_target: 0,
-            });
-            setOpenForm(true);
-          }}
-          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all"
-        >
-          Assign New Target
-        </Button>
+
+        {/* Assign New Target button - hidden for interns */}
+        {!isIntern && (
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setForm({
+                user_id: "",
+                target_id: "",
+                assigned_by: "",
+                start_date: "",
+                end_date: "",
+                status: "Assigned",
+                remarks: "",
+                monthly_target: 0,
+                smart_invest_target: 0,
+                flex_saver_target: 0,
+              });
+              setOpenForm(true);
+            }}
+            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all"
+          >
+            Assign New Target
+          </Button>
+        )}
       </div>
 
       {/* Status Cards Grid */}
@@ -320,38 +395,42 @@ export default function AssignTarget() {
                 <TR>
                   <TD style={{ textAlign: "center" }} className="py-8" colSpan={5}>
                     <div className="text-gray-500">No targets assigned yet</div>
-                    <Button
-                      onClick={() => {
-                        setEditing(null);
-                        setForm({
-                          user_id: "",
-                          target_id: "",
-                          assigned_by: "",
-                          start_date: "",
-                          end_date: "",
-                          status: "Assigned",
-                          remarks: "",
-                          monthly_target: 0,
-                          smart_invest_target: 0,
-                          flex_saver_target: 0,
-                        });
-                        setOpenForm(true);
-                      }}
-                      className="mt-4 text-indigo-600 hover:text-indigo-800"
-                    >
-                      Assign your first target
-                    </Button>
+                    {!isIntern && (
+                      <Button
+                        onClick={() => {
+                          setEditing(null);
+                          setForm({
+                            user_id: "",
+                            target_id: "",
+                            assigned_by: "",
+                            start_date: "",
+                            end_date: "",
+                            status: "Assigned",
+                            remarks: "",
+                            monthly_target: 0,
+                            smart_invest_target: 0,
+                            flex_saver_target: 0,
+                          });
+                          setOpenForm(true);
+                        }}
+                        className="mt-4 text-indigo-600 hover:text-indigo-800"
+                      >
+                        Assign your first target
+                      </Button>
+                    )}
                   </TD>
                 </TR>
               ) : (
                 assignedTargets.map((assigned) => (
                   <TR key={assigned.id} className="hover:bg-gray-50">
                     <TD>
-                      <div className="font-medium text-gray-900">{getEmployeeName(assigned.user_id)}</div>
+                      <div className="font-medium text-gray-900">{getEmployeeName(assigned)}</div>
+                      <div className="text-sm text-gray-500">
+                        {assigned.user?.email || employees.find((e) => e.id === assigned.user_id)?.email}
+                      </div>
                     </TD>
                     <TD>
-                     <div className="max-w-md">{getTargetDescription(assigned)}</div>
-
+                      <div className="max-w-md">{getTargetDescription(assigned)}</div>
                     </TD>
                     <TD>
                       <div className="text-sm text-gray-600">
@@ -370,18 +449,34 @@ export default function AssignTarget() {
                     </TD>
                     <TD>
                       <div className="flex justify-center gap-2">
+                        {/* For interns: only View eye icon */}
                         <button
-                          onClick={() => handleEdit(assigned)}
+                          onClick={() => handleView(assigned)}
+                          title="View details"
                           className="p-1 text-gray-500 hover:text-indigo-600"
                         >
-                          ✏️
+                          👁️
                         </button>
-                        <button
-                          onClick={() => handleDelete(assigned.id)}
-                          className="p-1 text-gray-500 hover:text-red-600"
-                        >
-                          🗑️
-                        </button>
+
+                        {/* For non-interns: show edit/delete as before */}
+                        {!isIntern && (
+                          <>
+                            <button
+                              onClick={() => handleEdit(assigned)}
+                              className="p-1 text-gray-500 hover:text-indigo-600"
+                              title="Edit"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => handleDelete(assigned.id)}
+                              className="p-1 text-gray-500 hover:text-red-600"
+                              title="Delete"
+                            >
+                              🗑️
+                            </button>
+                          </>
+                        )}
                       </div>
                     </TD>
                   </TR>
@@ -392,6 +487,7 @@ export default function AssignTarget() {
         </div>
       </div>
 
+      {/* Assign/Edit Dialog (hidden for interns via button; still present for non-interns) */}
       <Dialog
         open={openForm}
         onClose={() => {
@@ -540,6 +636,92 @@ export default function AssignTarget() {
             </Button>
           </div>
         </form>
+      </Dialog>
+
+      {/* View Modal (used by interns and anyone who wants to view) */}
+      <Dialog
+        open={viewOpen}
+        onClose={() => {
+          setViewOpen(false);
+          setViewTarget(null);
+        }}
+        title="Assigned Target Details"
+      >
+        {viewTarget ? (
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm text-gray-500">Employee</p>
+              <p className="font-medium text-gray-900">{getEmployeeName(viewTarget)}</p>
+              <p className="text-sm text-gray-500">{viewTarget.user?.email}</p>
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-500">Assigned By</p>
+              <p className="font-medium text-gray-900">
+                {viewTarget.assigner ? `${viewTarget.assigner.fname || ""} ${viewTarget.assigner.lname || ""}`.trim() : "Unknown"}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-500">Target</p>
+              <p className="font-medium text-gray-900">{getTargetDescription(viewTarget)}</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Start Date</p>
+                <p className="font-medium text-gray-900">{new Date(viewTarget.start_date).toLocaleDateString()}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">End Date</p>
+                <p className="font-medium text-gray-900">{new Date(viewTarget.end_date).toLocaleDateString()}</p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-500">Status</p>
+              <p className="font-medium text-gray-900">{viewTarget.status}</p>
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-500">Remarks</p>
+              <p className="font-medium text-gray-900">{viewTarget.remarks || "-"}</p>
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-500">Plans</p>
+              {viewTarget.target && viewTarget.target.plans && Object.keys(viewTarget.target.plans).length > 0 ? (
+                <div className="mt-2 space-y-2">
+                  {Object.entries(viewTarget.target.plans).map(([planId, count]) => (
+                    <div key={planId} className="flex justify-between items-center border rounded-md p-2">
+                      <div className="text-sm text-gray-700 break-all">
+                        <span className="font-medium">Plan:</span> {getPlanName(planId)}
+                      </div>
+                      <div className="text-sm font-medium text-gray-900">{count}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">No plans available for this target</p>
+              )}
+
+            </div>
+
+            <div className="flex justify-end pt-4 border-t">
+              <Button
+                onClick={() => {
+                  setViewOpen(false);
+                  setViewTarget(null);
+                }}
+                className="px-4 py-2"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="text-gray-500">No details to show</div>
+        )}
       </Dialog>
     </div>
   );

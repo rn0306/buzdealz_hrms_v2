@@ -74,7 +74,7 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
     // { label: 'Documents', icon: 'FileText', path: '/documents' },
     { label: 'Reports', icon: 'PieChart', path: '/reports' },
     { label: 'Email Templates', icon: 'FileText', path: '/email-templates' },
-    { label: 'Settings', icon: 'Settings', path: '/settings' },
+    { label: 'Activities', icon: 'ClipboardCheck', path: '/activities' },
   ],
   intern: [
     { label: 'Dashboard', icon: 'Home', path: '/dashboard' },
@@ -86,8 +86,8 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
         { label: 'My Subscriptions', path: '/subscriptions/list' },
       ],
     },
-    { label: 'Targets & Tasks', icon: 'Target', path: '/performance/targets' },
-    // { label: 'Documents', icon: 'FileText', path: '/documents' },
+    { label: 'Targets & Tasks', icon: 'Target', path: '/performance/employee_targets' },
+    { label: 'Activities', icon: 'ClipboardCheck', path: '/activities' },
     { label: 'My Profile', icon: 'User', path: '/profile' },
   ],
   recruiter: [
@@ -109,7 +109,7 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
     },
     // { label: 'Documents', icon: 'FileText', path: '/documents' },
     { label: 'Reports', icon: 'PieChart', path: '/reports' },
-    { label: 'Settings', icon: 'Settings', path: '/settings' },
+    // { label: 'Activities', icon: 'ClipboardCheck', path: '/activities' },
   ],
   manager: [
     { label: 'Dashboard', icon: 'Home', path: '/dashboard' },
@@ -132,7 +132,7 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
       ],
     },
     { label: 'Reports', icon: 'PieChart', path: '/reports' },
-    { label: 'Settings', icon: 'Settings', path: '/settings' },
+    { label: 'Activities', icon: 'ClipboardCheck', path: '/activities' },
   ],
   verifier: [
     { label: 'Dashboard', icon: 'Home', path: '/dashboard' },
@@ -146,7 +146,7 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
     },
     // { label: 'Documents', icon: 'FileText', path: '/documents' },
     { label: 'Reports', icon: 'PieChart', path: '/reports' },
-    { label: 'Settings', icon: 'Settings', path: '/settings' },
+    { label: 'Activities', icon: 'ClipboardCheck', path: '/activities' },
   ],
 }
 
