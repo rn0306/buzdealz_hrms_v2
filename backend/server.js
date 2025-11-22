@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const bodyParser = require('body-parser');
+
 require('dotenv').config();
 
 const { sequelize } = require('./models');
@@ -8,11 +10,16 @@ const onboardingRoutes = require('./routes/onboardingRoutes');
 const candidateRoutes = require('./routes/candidateRoutes');
 const personalDetailsRoutes = require('./routes/PersonalDetailsRoutes');
 const emailTemplateRoutes = require('./routes/emailTemplateRoutes');
+const roleRoutes = require('./routes/roleRoutes');
+const extensionRoutes = require('./routes/extensionRoutes');
+const terminationRoutes = require('./routes/terminationRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const internSubscriptionRoutes = require('./routes/internSubscriptionRoutes');
 const plansRoutes = require('./routes/plansRoutes');
 const targetsMasterRoutes = require('./routes/targetsMasterRoutes');
 const employeeTargetsRoutes = require('./routes/employeeTargetsRoutes');
+const documentRoutes = require('./routes/documentRoutes');
+const activityLogRoutes = require('./routes/activityLogRoutes');
 
 const app = express();
 
@@ -39,11 +46,18 @@ app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/personaldetails', personalDetailsRoutes);
 app.use('/api/email-templates', emailTemplateRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/extensions', extensionRoutes);
+app.use('/api/terminations', terminationRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/intern-subscriptions', internSubscriptionRoutes);
 app.use('/api/plans', plansRoutes);
 app.use('/api/targets-master', targetsMasterRoutes);
 app.use('/api/employee-targets', employeeTargetsRoutes);
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use('/api', documentRoutes);
+app.use('/api/activity-logs', activityLogRoutes);
 
 const PORT = process.env.PORT || 5000;
 

@@ -1,14 +1,19 @@
-import { useState, useEffect } from 'react'
-import Button from '../../components/ui/Button'
-import Input from '../../components/ui/Input'
-import Dialog from '../../components/ui/Dialog'
-import { toast } from 'sonner'
-import { api } from '../../lib/api'
-import { getUser } from '../../utils/auth'
+import { useState, useEffect } from "react";
+import Button from "../../components/ui/Button";
+import Input from "../../components/ui/Input";
+import Dialog from "../../components/ui/Dialog";
+import { toast } from "sonner";
+import { api } from "../../lib/api";
+import { getUser } from "../../utils/auth";
 
 export default function Profile() {
-  const [openForm, setOpenForm] = useState(false)
-  const [previewMode, setPreviewMode] = useState(false)
+  const [openForm, setOpenForm] = useState(false);
+  const [offerOpen, setOfferOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+
+  const [offerAccepted, setOfferAccepted] = useState(false);
+
+  const [managerName, setManagerName] = useState("");
 
   const [profile, setProfile] = useState<any>({
     personalDetails: {},
@@ -16,194 +21,221 @@ export default function Profile() {
     bankDetails: {},
     educationDetails: {},
     previousExperience: {},
-    joining_date: '',
-    confirmation_date: '',
-    date_of_birth: '',
-    otherDocuments: '',
-    verificationStatus: 'Pending',
-    rejectComment: '',
-  })
+    joining_date: "",
+    confirmation_date: "",
+    date_of_birth: "",
+    otherDocuments: "",
+    verificationStatus: "Pending",
+    rejectComment: "",
+  });
 
+  // --------------------------------
+  // FETCH PROFILE + MANAGER NAME
+  // --------------------------------
   useEffect(() => {
     const fetchPersonalDetails = async () => {
       try {
-        const user = getUser()
-        if (!user?.id) return
-        const response = await api.get(`/api/personaldetails/${user.id}`)
-        const data = response.data
-        const pd = data.personalDetail || {}
+        const user = getUser();
+        if (!user?.id) return;
+
+        const response = await api.get(`/api/personaldetails/${user.id}`);
+        const data = response.data;
+
+        setManagerName(data.manager_name || "-");
+
+        const pd = data.personalDetail || {};
 
         const formattedProfile = {
           personalDetails: {
-            fullName: `${data.fname || ''} ${data.lname || ''}`.trim(),
-            email: data.email || '',
-            phone: data.phone || '',
+            fullName: `${data.fname || ""} ${data.lname || ""}`.trim(),
+            email: data.email || "",
+            phone: data.phone || "",
           },
           adharCardDetails: {
-            adharNumber: pd.adhar_card_no || '',
-            panNumber: pd.pan_card_no || '',
+            adharNumber: pd.adhar_card_no || "",
+            panNumber: pd.pan_card_no || "",
           },
           bankDetails: {
-            bankName: pd.bank_name || '',
-            accountNumber: pd.account_no || '',
-            ifscCode: pd.ifsc_code || '',
+            bankName: pd.bank_name || "",
+            accountNumber: pd.account_no || "",
+            ifscCode: pd.ifsc_code || "",
           },
           educationDetails: {
-            highestQualification: pd.highest_education || '',
-            university: pd.university_name || '',
-            passingYear: pd.passing_year || '',
+            highestQualification: pd.highest_education || "",
+            university: pd.university_name || "",
+            passingYear: pd.passing_year || "",
           },
           previousExperience: {
-            companyName: pd.last_company_name || '',
-            role: pd.role_designation || '',
-            duration: pd.duration || '',
+            companyName: pd.last_company_name || "",
+            role: pd.role_designation || "",
+            duration: pd.duration || "",
           },
-          joining_date: data.joining_date || '',
-          confirmation_date: data.confirmation_date || '',
-          date_of_birth: data.date_of_birth || '',
-          otherDocuments: pd.other_documents_url || '',
-          verificationStatus: pd.verification_status || 'Pending',
-          rejectComment: pd.rejectComment || '',
-        }
+          joining_date: data.joining_date || "",
+          confirmation_date: data.confirmation_date || "",
+          date_of_birth: data.date_of_birth || "",
+          otherDocuments: pd.other_documents_url || "",
+          verificationStatus: pd.verification_status || "Pending",
+          rejectComment: pd.rejectComment || "",
+        };
 
-        setProfile(formattedProfile)
-        setPreviewMode(true)
+        setProfile(formattedProfile);
+        setPreviewMode(true);
       } catch (err: any) {
         if (err?.response?.status === 404) {
-          setPreviewMode(false)
+          setPreviewMode(false);
         } else {
-          toast.error(err?.response?.data?.error || 'Failed to fetch profile')
+          toast.error(err?.response?.data?.error || "Failed to fetch profile");
         }
       }
-    }
+    };
 
-    fetchPersonalDetails()
-  }, [])
+    fetchPersonalDetails();
+  }, []);
 
+  // --------------------------------
+  // FORM CHANGE HANDLERS
+  // --------------------------------
   function handleInputChange(section: keyof typeof profile, field: string, value: string) {
     setProfile((prev: any) => ({
       ...prev,
       [section]: { ...prev[section], [field]: value },
-    }))
+    }));
   }
 
   function handleFieldChange(field: string, value: string) {
     setProfile((prev: any) => ({
       ...prev,
       [field]: value,
-    }))
+    }));
   }
 
+  // --------------------------------
+  // SUBMIT PROFILE UPDATE
+  // --------------------------------
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
     try {
-      const user = getUser()
-      const userId = user?.id
-      const [fname, ...lnameParts] = (profile.personalDetails.fullName || '').split(' ')
-      const lname = lnameParts.join(' ')
+      const user = getUser();
+      const userId = user?.id;
+
+      const [fname, ...lnameParts] = (profile.personalDetails.fullName || "").split(" ");
+      const lname = lnameParts.join(" ");
 
       const payload = {
         fname,
         lname,
-        email: profile.personalDetails.email || '',
-        phone: profile.personalDetails.phone || '',
+        email: profile.personalDetails.email || "",
+        phone: profile.personalDetails.phone || "",
         joining_date: profile.joining_date || null,
         confirmation_date: profile.confirmation_date || null,
         date_of_birth: profile.date_of_birth || null,
-        adhar_card_no: profile.adharCardDetails.adharNumber || '',
-        pan_card_no: profile.adharCardDetails.panNumber || '',
-        bank_name: profile.bankDetails.bankName || '',
-        account_no: profile.bankDetails.accountNumber || '',
-        ifsc_code: profile.bankDetails.ifscCode || '',
-        highest_education: profile.educationDetails.highestQualification || '',
-        university_name: profile.educationDetails.university || '',
-        passing_year: profile.educationDetails.passingYear || '',
-        last_company_name: profile.previousExperience.companyName || '',
-        role_designation: profile.previousExperience.role || '',
-        duration: profile.previousExperience.duration || '',
-        other_documents_url: profile.otherDocuments || '',
-        verification_status: 'PENDING',
-        source: 'Portal',
-        current_stage: 'New',
-      }
+        adhar_card_no: profile.adharCardDetails.adharNumber || "",
+        pan_card_no: profile.adharCardDetails.panNumber || "",
+        bank_name: profile.bankDetails.bankName || "",
+        account_no: profile.bankDetails.accountNumber || "",
+        ifsc_code: profile.bankDetails.ifscCode || "",
+        highest_education: profile.educationDetails.highestQualification || "",
+        university_name: profile.educationDetails.university || "",
+        passing_year: profile.educationDetails.passingYear || "",
+        last_company_name: profile.previousExperience.companyName || "",
+        role_designation: profile.previousExperience.role || "",
+        duration: profile.previousExperience.duration || "",
+        other_documents_url: profile.otherDocuments || "",
+        verification_status: "PENDING",
+        source: "Portal",
+        current_stage: "New",
+      };
 
-      await api.put(`/api/personaldetails/${userId}`, payload)
-      toast.success('Profile updated successfully')
-      setPreviewMode(true)
-      setOpenForm(false)
+      await api.put(`/api/personaldetails/${userId}`, payload);
+      toast.success("Profile updated successfully");
+      setPreviewMode(true);
+      setOpenForm(false);
     } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Failed to save profile')
+      toast.error(err?.response?.data?.error || "Failed to save profile");
     }
+  }
+
+  // --------------------------------
+  // OFFER LETTER ACCEPTANCE
+  // --------------------------------
+  function handleOfferAccept() {
+    setOfferAccepted(true);
+    setOfferOpen(false);
+    toast.success("Offer Letter Accepted Successfully!");
   }
 
   return (
     <section className="mx-auto max-w-5xl p-6 space-y-10">
+
       <h1 className="text-3xl font-extrabold text-center bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
         My Profile
       </h1>
 
-      {/* If profile exists → show preview */}
+      {/* --------------------------
+          PREVIEW MODE (VIEW PROFILE)
+      --------------------------- */}
       {previewMode && (
-        <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-lg space-y-8 transition hover:shadow-xl">
-          <h2 className="text-2xl font-semibold text-indigo-700 border-b border-indigo-200 pb-2">
+        <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-lg space-y-8">
+
+          <h2 className="text-2xl font-semibold text-indigo-700 border-b pb-2">
             Profile Overview
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 text-gray-700">
+
             <div>
               <p className="font-semibold text-gray-800">Full Name</p>
-              <p>{profile.personalDetails.fullName || '-'}</p>
+              <p>{profile.personalDetails.fullName || "-"}</p>
             </div>
+
+            {/* MANAGER NAME */}
+            <div>
+              <p className="font-semibold text-gray-800">Manager Name</p>
+              <p>{managerName || "-"}</p>
+            </div>
+
             <div>
               <p className="font-semibold text-gray-800">Email</p>
-              <p>{profile.personalDetails.email || '-'}</p>
+              <p>{profile.personalDetails.email || "-"}</p>
             </div>
+
             <div>
               <p className="font-semibold text-gray-800">Phone</p>
-              <p>{profile.personalDetails.phone || '-'}</p>
+              <p>{profile.personalDetails.phone || "-"}</p>
             </div>
+
             <div>
               <p className="font-semibold text-gray-800">Joining Date</p>
-              <p>{profile.joining_date ? new Date(profile.joining_date).toLocaleDateString() : '-'}</p>
+              <p>
+                {profile.joining_date
+                  ? new Date(profile.joining_date).toLocaleDateString()
+                  : "-"}
+              </p>
             </div>
-            <div>
-              <p className="font-semibold text-gray-800">Confirmation Date</p>
-              <p>{profile.confirmation_date ? new Date(profile.confirmation_date).toLocaleDateString() : '-'}</p>
-            </div>
+
             <div>
               <p className="font-semibold text-gray-800">Date of Birth</p>
-              <p>{profile.date_of_birth ? new Date(profile.date_of_birth).toLocaleDateString() : '-'}</p>
+              <p>
+                {profile.date_of_birth
+                  ? new Date(profile.date_of_birth).toLocaleDateString()
+                  : "-"}
+              </p>
             </div>
-            <div>
-              <p className="font-semibold text-gray-800">Aadhar No</p>
-              <p>{profile.adharCardDetails.adharNumber || '-'}</p>
-            </div>
-            <div>
-              <p className="font-semibold text-gray-800">PAN No</p>
-              <p>{profile.adharCardDetails.panNumber || '-'}</p>
-            </div>
-            <div>
-              <p className="font-semibold text-gray-800">Bank Name</p>
-              <p>{profile.bankDetails.bankName || '-'}</p>
-            </div>
-            <div>
-              <p className="font-semibold text-gray-800">Qualification</p>
-              <p>{profile.educationDetails.highestQualification || '-'}</p>
-            </div>
-            <div>
-              <p className="font-semibold text-gray-800">University</p>
-              <p>{profile.educationDetails.university || '-'}</p>
-            </div>
-            <div>
-              <p className="font-semibold text-gray-800">Experience</p>
-              <p>{profile.previousExperience.role || '-'}</p>
-            </div>
+
           </div>
 
-          <div className="flex justify-end">
+          {/* ACTION BUTTONS */}
+          <div className="flex justify-between pt-4 border-t">
+            <Button
+              onClick={() => setOfferOpen(true)}
+              className="rounded-lg px-6 py-3 text-lg bg-green-600 text-white hover:bg-green-700"
+            >
+              View Offer Letter
+            </Button>
+
             <Button
               onClick={() => setOpenForm(true)}
-              className="rounded-lg px-6 py-3 text-lg font-semibold shadow-md bg-gradient-to-r from-indigo-600 to-blue-700 text-white hover:from-indigo-700 hover:to-blue-800 transition"
+              className="rounded-lg px-6 py-3 text-lg bg-blue-600 text-white hover:bg-blue-700"
             >
               Edit Profile
             </Button>
@@ -211,21 +243,57 @@ export default function Profile() {
         </div>
       )}
 
-      {/* If no profile exists */}
+      {/* -----------------------------
+          OFFER LETTER MODAL
+      ------------------------------ */}
+      <Dialog open={offerOpen} onClose={() => setOfferOpen(false)} title="Offer Letter">
+        <div className="px-4 pb-4 space-y-4">
+
+          <p className="text-gray-700 leading-relaxed">
+            <strong>Dear Intern,</strong>
+            <br /><br />
+            We are pleased to offer you the position of <strong>Intern</strong> at our company.
+            This letter confirms the terms and conditions of your internship.
+            <br /><br />
+            This is a dummy placeholder for your official offer letter content.
+            <br /><br />
+            Regards,<br />
+            <strong>HR Department</strong>
+          </p>
+
+          <div className="flex justify-end gap-4 pt-3 border-t">
+            {!offerAccepted && (
+              <Button onClick={handleOfferAccept} className="bg-green-600 text-white hover:bg-green-700">
+                Accept Offer
+              </Button>
+            )}
+
+            <Button variant="outline" onClick={() => setOfferOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* -----------------------------
+          NO PROFILE YET
+      ------------------------------ */}
       {!previewMode && (
-        <div className="rounded-xl border border-gray-200 bg-white shadow-md p-10 flex flex-col items-center space-y-6">
+        <div className="rounded-xl border border-gray-200 bg-white shadow-md p-10 text-center">
           <p className="text-gray-700 text-lg font-medium">No profile added yet.</p>
           <Button
             onClick={() => setOpenForm(true)}
-            className="rounded-lg px-6 py-3 text-lg shadow-md bg-gradient-to-r from-indigo-600 to-blue-700 text-white hover:from-indigo-700 hover:to-blue-800 transition"
+            className="mt-4 px-6 py-3 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700"
           >
             Add Profile
           </Button>
         </div>
       )}
 
-      {/* Profile Edit Dialog */}
-      <Dialog open={openForm} onClose={() => setOpenForm(false)} title="Add / Edit Profile" className="max-w-5xl w-full rounded-xl">
+      {/* -----------------------------
+          PROFILE EDIT MODAL
+      ------------------------------ */}
+      <Dialog open={openForm} onClose={() => setOpenForm(false)} title="Add / Edit Profile" className="max-w-5xl w-full">
         <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto px-2 sm:px-6 pb-6">
           {/* Personal Details */}
           <section>
@@ -306,5 +374,5 @@ export default function Profile() {
         </form>
       </Dialog>
     </section>
-  )
+  );
 }

@@ -128,6 +128,7 @@ User.associate = (models) => {
 };
 
 User.prototype.validatePassword = async function (password) {
+  console.log("Validating password :", password, this.password_hash);
   return await bcrypt.compare(password, this.password_hash);
 };
 

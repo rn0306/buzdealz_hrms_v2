@@ -1,8 +1,12 @@
 // routes/emailTemplateRoutes.js
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const EmailTemplateController = require('../controllers/emailTemplateController');
 const { auth, checkRole } = require('../middleware/authMiddleware');
+
+// Configure multer for file uploads
+const upload = multer({ storage: multer.memoryStorage() });
 
 // All routes protected (HR/Admin roles only)
 router.get('/', auth, checkRole('ADMIN', 'RECRUITER'), EmailTemplateController.getAllTemplates);
@@ -10,6 +14,6 @@ router.get('/:id', auth, checkRole('ADMIN', 'RECRUITER'), EmailTemplateControlle
 router.post('/', auth, checkRole('ADMIN', 'RECRUITER'), EmailTemplateController.createTemplate);
 router.put('/:id', auth, checkRole('ADMIN', 'RECRUITER'), EmailTemplateController.updateTemplate);
 router.delete('/:id', auth, checkRole('ADMIN', 'RECRUITER'), EmailTemplateController.deleteTemplate);
-router.post('/send', auth, checkRole('ADMIN', 'RECRUITER'), EmailTemplateController.sendTemplatedEmail);
+router.post('/send', auth, checkRole('ADMIN', 'RECRUITER'), upload.single('attachment'), EmailTemplateController.sendTemplatedEmail);
 
 module.exports = router;

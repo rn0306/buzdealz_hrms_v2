@@ -44,6 +44,7 @@ export const getActiveTargets = () => api.get('/api/targets-master/active/list')
 export const getActiveUsers = () => api.get('/api/auth/users/active');
 
 
+
 // Plans APIs
 export const getPlansMaster = () => api.get('/api/plans');
 export const createPlanMaster = (data: any) => api.post('/api/plans', data);

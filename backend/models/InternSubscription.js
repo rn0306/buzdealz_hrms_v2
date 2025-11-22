@@ -20,10 +20,6 @@ const InternSubscription = sequelize.define('InternSubscription', {
     type: DataTypes.STRING(100),
     allowNull: false,
   },
-  subscriber_name: {
-    type: DataTypes.STRING(150),
-    allowNull: false
-  },
   subscriber_email: {
     type: DataTypes.STRING(150),
     allowNull: true
@@ -33,7 +29,7 @@ const InternSubscription = sequelize.define('InternSubscription', {
     allowNull: true
   },
   subscription_plan: {
-    type: DataTypes.ENUM('Monthly Plan', 'Smart Invest Plan', 'Flex Saver Plan'),
+    type: DataTypes.STRING(100),
     allowNull: false
   },
   submission_date: {
