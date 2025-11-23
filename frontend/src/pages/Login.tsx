@@ -29,23 +29,19 @@ const Login = () => {
           apiToken: token,
         })
 
-        // ✅ Redirect based on role
+        // ✅ Redirect based on role (force full reload so sidebar gets correct role)
         switch (role?.code) {
           case 'ADMIN':
-            navigate('/dashboard')
-            break
           case 'MANAGER':
-            navigate('/manager/dashboard')
-            break
           case 'RECRUITER':
-            navigate('/recruiter/team-setup')
-            break
           case 'INTERN':
-            navigate('/intern/dashboard')
+            window.location.href = '/dashboard'
             break
+
           default:
-            navigate('/')
+            window.location.href = '/'
         }
+
       } else {
         setError('Invalid credentials')
       }

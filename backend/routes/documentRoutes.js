@@ -10,6 +10,6 @@ router.put('/document-templates/:id', ctrl.updateTemplate);
 router.delete('/document-templates/:id', ctrl.deleteTemplate);
 
 router.post('/documents/generate', ctrl.generateDocument); // returns PDF inline
-// router.post('/documents/send', ctrl.sendDocument); // send PDF as attachment
+router.post('/documents/send', ctrl.sendDocument); // send PDF as attachment
 
 module.exports = router;

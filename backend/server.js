@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const http = require('http');
+const socketIO = require('socket.io');
 
 require('dotenv').config();
 
@@ -20,8 +22,10 @@ const targetsMasterRoutes = require('./routes/targetsMasterRoutes');
 const employeeTargetsRoutes = require('./routes/employeeTargetsRoutes');
 const documentRoutes = require('./routes/documentRoutes');
 const activityLogRoutes = require('./routes/activityLogRoutes');
+const notificationsRoutes = require('./routes/notificationsRoutes');
 
 const app = express();
+const server = http.createServer(app);
 
 // ✅ CORS middleware
 app.use(
@@ -32,6 +36,39 @@ app.use(
     credentials: true,
   })
 );
+
+// ✅ Socket.IO setup
+const io = socketIO(server, {
+  cors: {
+    origin: 'http://localhost:5173',
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+});
+
+// Store io instance on app for access in controllers
+app.set('io', io);
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+  console.log(`🔌 User connected: ${socket.id}`);
+
+  // Join user-specific room on connection
+  socket.on('user:auth', (userId) => {
+    if (userId) {
+      socket.join(`user_${userId}`);
+      console.log(`👤 User ${userId} joined room user_${userId}`);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔌 User disconnected: ${socket.id}`);
+  });
+
+  socket.on('error', (error) => {
+    console.error(`❌ Socket error: ${error}`);
+  });
+});
 
 // ✅ JSON parser
 app.use(express.json());
@@ -58,6 +95,7 @@ app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use('/api', documentRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 const PORT = process.env.PORT || 5000;
 
@@ -71,7 +109,7 @@ const PORT = process.env.PORT || 5000;
     await sequelize.sync({ alter: true });
     console.log('🔄 Database schema synced (altered to match models)');
 
-    app.listen(PORT, () =>
+    server.listen(PORT, () =>
       console.log(`🚀 Server running on http://localhost:${PORT}`)
     );
   } catch (err) {

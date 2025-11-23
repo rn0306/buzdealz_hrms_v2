@@ -1,5 +1,6 @@
 const { InternSubscription } = require('../models');
-const  Subscription = require('../models/Subscription');
+const Subscription = require('../models/Subscription');
+const { validateAndProcessSubscription } = require('../utils/targetSubscriptionService');
 
 class InternSubscriptionController {
   // GET /api/intern-subscriptions
@@ -8,7 +9,7 @@ class InternSubscriptionController {
     try {
       const { subscriptionId, intern_id } = req.query;
       const where = {};
-      
+
       if (subscriptionId) {
         where.subscription_id = subscriptionId;
       }
@@ -45,92 +46,128 @@ class InternSubscriptionController {
     }
   }
 
-// POST /api/intern-subscriptions
-static async create(req, res) {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
+  // POST /api/intern-subscriptions
+  static async create(req, res) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
 
-    const {
-      subscriptionId,
-      email,
-      phone,
-      subscriptionPlan,
-      proofFileUrl,
-      proofFileName,
-      status,
-    } = req.body;
+      const {
+        subscriptionId,
+        email,
+        phone,
+        subscriptionPlan,
+        proofFileUrl,
+        proofFileName,
+        status,
+      } = req.body;
 
-    // Required fields
-    if (!subscriptionId || !subscriptionPlan) {
-      return res.status(400).json({ error: 'subscriptionId and subscriptionPlan are required' });
-    }
+      // Required fields
+      if (!subscriptionId || !subscriptionPlan) {
+        return res.status(400).json({ error: 'subscriptionId and subscriptionPlan are required' });
+      }
 
-    // Fetch master subscription
-    const subscription = await Subscription.findOne({
-      where: { subscription_id: subscriptionId }
-    });
+      // Fetch master subscription
+      const subscription = await Subscription.findOne({
+        where: { subscription_id: subscriptionId }
+      });
 
-    if (!subscription) {
-      return res.status(404).json({ error: 'Subscription not found' });
-    }
+      if (!subscription) {
+        return res.status(404).json({ error: 'Subscription not found' });
+      }
 
-    // Check if already verified
-    if (subscription.verification_status === 'Verified') {
-      return res.status(200).json({
+      // Build mismatch list (dynamic)
+      const mismatches = [];
+
+      if (email && subscription.email && email !== subscription.email) {
+        mismatches.push(`Email does not match.}`);
+      }
+
+      if (phone && subscription.phone && phone !== subscription.phone) {
+        mismatches.push(`Phone does not match.`);
+      }
+
+      if (subscriptionPlan != subscription.subscription_plan) {
+        mismatches.push(`Subscription Plan does not match.`);
+      }
+
+      // If mismatches detected → return error
+      if (mismatches.length > 0) {
+        return res.status(400).json({
+          error: 'Provided details do not match our subscription records.',
+          mismatches,
+        });
+      }
+
+      // =========================================================
+      // NEW: Validate and process subscription with target checks
+      // =========================================================
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const validationResult = await validateAndProcessSubscription(
+        req.user.id,
+        subscriptionId,
+        today,
+        today
+      );
+
+      // If validation failed, return error
+      if (!validationResult.success) {
+        return res.status(400).json({
+          error: 'Subscription validation failed',
+          details: validationResult.error,
+          code: validationResult.code
+        });
+      }
+
+      // Check if already verified
+      if (subscription.verification_status === 'Verified') {
+        const record = await InternSubscription.create({
+          user_id: req.user.id,
+          subscription_id: subscriptionId,
+          subscriber_email: email || null,
+          subscriber_phone: phone || null,
+          subscription_plan: subscriptionPlan,
+          proof_file_url: proofFileUrl || null,
+          proof_file_name: proofFileName || null,
+          validation_status: ("DUPLICATE"),
+        });
+        return res.status(200).json({
+          success: true,
+          message: 'This subscription is already verified and cannot be submitted again.',
+          data: record,
+          targetInfo: validationResult
+        });
+      }
+
+      // Create the subscription record
+      const record = await InternSubscription.create({
+        user_id: req.user.id,
+        subscription_id: subscriptionId,
+        subscriber_email: email || null,
+        subscriber_phone: phone || null,
+        subscription_plan: subscriptionPlan,
+        proof_file_url: proofFileUrl || null,
+        proof_file_name: proofFileName || null,
+        validation_status: ("VERIFIED"),
+      });
+
+      // Update master subscription to verified
+      await subscription.update({ verification_status: 'Verified' });
+
+      return res.status(201).json({
         success: true,
-        message: 'This subscription is already verified and cannot be submitted again.',
-        data: null,
+        data: record,
+        targetInfo: validationResult
       });
+
+    } catch (err) {
+      console.error('Error creating intern subscription', err);
+      return res.status(500).json({ error: 'Unable to create submission', details: err.message });
     }
-
-
-    // Build mismatch list (dynamic)
-    const mismatches = [];
-
-    if (email && subscription.email && email !== subscription.email) {
-      mismatches.push(`Email does not match.}`);
-    }
-
-    if (phone && subscription.phone && phone !== subscription.phone) {
-      mismatches.push(`Phone does not match.`);
-    }
-    console.log("subscriptionPlan", subscriptionPlan);
-    console.log("subscription.plan_name", subscription.subscription_plan);
-    if (subscriptionPlan != subscription.subscription_plan) {
-      mismatches.push(`Subscription Plan does not match.`);
-    }
-
-    // If mismatches detected → return error
-    if (mismatches.length > 0) {
-      return res.status(400).json({
-        error: 'Provided details do not match our subscription records.',
-        mismatches,
-      });
-    }
-
-    const record = await InternSubscription.create({
-      user_id: req.user.id,
-      subscription_id: subscriptionId,
-      subscriber_email: email || null,
-      subscriber_phone: phone || null,
-      subscription_plan: subscriptionPlan,
-      proof_file_url: proofFileUrl || null,
-      proof_file_name: proofFileName || null,
-      validation_status: (status || 'PENDING').toUpperCase(),
-    });
-
-    // Update master subscription to verified
-    await subscription.update({ verification_status: 'Verified' });
-
-    return res.status(201).json({ data: record });
-
-  } catch (err) {
-    console.error('Error creating intern subscription', err);
-    return res.status(500).json({ error: 'Unable to create submission' });
   }
-}
 
 
   // DELETE /api/intern-subscriptions/:id

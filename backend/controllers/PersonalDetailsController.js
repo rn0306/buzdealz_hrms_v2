@@ -5,18 +5,58 @@ class PersonalDetailsController {
   // List all personal details
   static async list(req, res) {
     try {
+      if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+
+      const roleCode = req.user.Role?.code;
+
+      let whereCondition = {
+        verification_status: { [Op.in]: ['VERIFIED', 'ACCEPTED'] }
+      };
+
+      // ---------------------------------------
+      // MANAGER → Only details of their interns
+      // ---------------------------------------
+      if (roleCode === 'MANAGER') {
+
+        // find interns assigned under manager
+        const interns = await User.findAll({
+          where: { manager_id: req.user.id },
+          include: [
+            { model: Role, where: { code: 'INTERN' }, attributes: [] }
+          ],
+          attributes: ['id']
+        });
+
+        const internIds = interns.map(i => i.id);
+
+        if (!internIds.length) {
+          return res.json([]); // manager has no interns
+        }
+
+        whereCondition.user_id = { [Op.in]: internIds };
+      }
+
+      // ---------------------------------------
+      // ADMIN & RECRUITER → Get all records
+      // (No extra filtering)
+      // ---------------------------------------
+      // roleCode === 'ADMIN' or 'RECRUITER'
+      // simply use default whereCondition
+
       const details = await PersonalDetail.findAll({
-        where: { verification_status: { [Op.in]: ['VERIFIED', 'ACCEPTED'] } },
+        where: whereCondition,
         include: [{ model: User, as: 'user' }],
-        order: [['created_at', 'DESC']],
+        order: [['created_at', 'DESC']]
       });
 
-      res.json(details);
+      return res.json(details);
+
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      console.error(err);
+      return res.status(500).json({ error: err.message });
     }
   }
-
+  
   // List filled Aadhaar & PAN users
   static async listFilledCandidates(req, res) {
     try {

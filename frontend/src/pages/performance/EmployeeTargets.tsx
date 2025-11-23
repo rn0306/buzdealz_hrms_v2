@@ -4,15 +4,17 @@ import Dialog from "../../components/ui/Dialog";
 import { Table, THead, TBody, TR, TH, TD } from "../../components/ui/Table";
 import { toast } from "sonner";
 import { getUser } from "../../utils/auth";
+import SendWarningModal from "../../components/notifications/SendWarningModal";
 
 import {
+  api,
   getEmployeeTargets,
   createEmployeeTarget,
   updateEmployeeTarget,
   deleteEmployeeTarget,
   getActiveTargets,
   getActiveUsers,
-  getPlansMaster
+  getPlansMaster,
 } from "../../lib/api";
 
 type AssignedTarget = {
@@ -74,12 +76,20 @@ type Employee = {
   email: string;
 };
 
+type PlanProgressRow = {
+  planId: string;
+  planName: string;
+  target: number;
+  verified: number;
+  status: "Pending" | "In Progress" | "Completed";
+};
+
 export default function AssignTarget() {
   const [assignedTargets, setAssignedTargets] = useState<AssignedTarget[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [targets, setTargets] = useState<Target[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
-  const [plansList, setPlansList] = useState<any[]>([]);
+  const [plansList, setPlansList] = useState<any[]>([]); // still available if needed later
   const [openForm, setOpenForm] = useState(false);
   const [editing, setEditing] = useState<AssignedTarget | null>(null);
   const [loading, setLoading] = useState(false);
@@ -87,6 +97,13 @@ export default function AssignTarget() {
   // View modal state (for interns and anyone who wants to view)
   const [viewTarget, setViewTarget] = useState<AssignedTarget | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+
+  // For Verified vs Targeted count
+  const [verifiedSubscriptions, setVerifiedSubscriptions] = useState<any[]>([]);
+
+  // Send Warning modal state
+  const [warningTarget, setWarningTarget] = useState<AssignedTarget | null>(null);
+  const [warningOpen, setWarningOpen] = useState(false);
 
   const [form, setForm] = useState<Partial<AssignedTarget>>({
     user_id: "",
@@ -104,8 +121,8 @@ export default function AssignTarget() {
   // Get current user and derive role-based flag
   const currentUser = useMemo(() => getUser(), []);
   const isIntern = useMemo(() => {
-    // per your confirmation, role value for intern is "intern"
-    return currentUser?.role === "intern";
+    // roles in storage are normalized to lowercase
+    return (currentUser?.role || "").toUpperCase() === "INTERN";
   }, [currentUser]);
 
   // Fetch all data on mount
@@ -122,10 +139,9 @@ export default function AssignTarget() {
         getActiveUsers(),
         getEmployeeTargets(),
       ]);
-      // Backend returns RAW arrays
-      setTargets(Array.isArray(targetsRes.data.data) ? targetsRes.data.data : []);
+
+      setTargets(Array.isArray(targetsRes.data?.data) ? targetsRes.data.data : []);
       setEmployees(Array.isArray(usersRes.data) ? usersRes.data : []);
-      // assignedRes.data may be array of assigned target objects (with nested user/target/assigner)
       setAssignedTargets(Array.isArray(assignedRes.data) ? assignedRes.data : []);
     } catch (err: any) {
       console.error("fetchAllData error:", err);
@@ -138,8 +154,8 @@ export default function AssignTarget() {
   async function fetchPlans() {
     try {
       const res = await getPlansMaster();
-      setPlans(res.data.data);
-      console.log(res)
+      setPlans(res.data.data || []);
+      setPlansList(res.data.data || []);
     } catch {
       toast.error("Failed to load plans");
     }
@@ -215,7 +231,7 @@ export default function AssignTarget() {
         remarks: "",
         monthly_target: 0,
         smart_invest_target: 0,
-        flex_saver_target: 0,
+        flex_saver_target: 0, 
       });
     } catch (err: any) {
       console.error("handleSubmit error:", err);
@@ -241,9 +257,37 @@ export default function AssignTarget() {
     }
   }
 
-  function handleView(assigned: AssignedTarget) {
+  // -------- VIEW HANDLER WITH VERIFIED SUBSCRIPTIONS (TIMELINE FILTER) --------
+  async function handleView(assigned: AssignedTarget) {
     setViewTarget(assigned);
     setViewOpen(true);
+
+    try {
+      // Load all submissions of that intern
+      const res = await api.get(`/api/intern-subscriptions/user/${assigned.user_id}`);
+      const all = res?.data?.data || res?.data || [];
+
+      const start = new Date(assigned.start_date);
+      const end = new Date(assigned.end_date);
+
+      // Only VERIFIED + within target timeline
+      const verified = all.filter((s: any) => {
+        if (s.validation_status !== "VERIFIED") return false;
+        const subDate = new Date(s.submission_date || s.created_at);
+        return subDate >= start && subDate <= end;
+      });
+
+      setVerifiedSubscriptions(verified);
+    } catch (err) {
+      console.error("handleView/load subscriptions error:", err);
+      toast.error("Failed to load subscription progress");
+      setVerifiedSubscriptions([]);
+    }
+  }
+
+  function handleSendWarning(assigned: AssignedTarget) {
+    setWarningTarget(assigned);
+    setWarningOpen(true);
   }
 
   function getStatusBadgeColor(status: AssignedTarget["status"]) {
@@ -278,7 +322,6 @@ export default function AssignTarget() {
       if (full) return full;
       if (assigned.user.email) return assigned.user.email;
     }
-    // fallback to employees list (used for create/edit scenarios)
     const emp = employees.find((e) => e.id === assigned.user_id);
     return emp?.name || "Unknown";
   };
@@ -290,6 +333,32 @@ export default function AssignTarget() {
     const t = targets.find((t) => t.id === assigned.target_id);
     return t?.target_description || "Unknown";
   };
+
+  // ---------------- PLAN PROGRESS (Verified vs Target) ----------------
+  const planProgress: PlanProgressRow[] = useMemo(() => {
+    if (!viewTarget?.target?.plans) return [];
+
+    return Object.entries(viewTarget.target.plans).map(([planId, targetCount]) => {
+      const planName = getPlanName(planId);
+
+      // Count VERIFIED subscriptions for this planName
+      const verifiedCount = verifiedSubscriptions.filter(
+        (s: any) => s.subscription_plan === planName
+      ).length;
+
+      let status: PlanProgressRow["status"] = "Pending";
+      if (verifiedCount >= Number(targetCount)) status = "Completed";
+      else if (verifiedCount > 0) status = "In Progress";
+
+      return {
+        planId,
+        planName,
+        target: Number(targetCount),
+        verified: verifiedCount,
+        status,
+      };
+    });
+  }, [viewTarget, verifiedSubscriptions, plans]);
 
   if (loading) {
     return (
@@ -458,9 +527,16 @@ export default function AssignTarget() {
                           👁️
                         </button>
 
-                        {/* For non-interns: show edit/delete as before */}
+                        {/* For non-interns: show edit/delete/warn */}
                         {!isIntern && (
                           <>
+                            <button
+                              onClick={() => handleSendWarning(assigned)}
+                              title="Send warning"
+                              className="p-1 text-gray-500 hover:text-yellow-600"
+                            >
+                              ⚠️
+                            </button>
                             <button
                               onClick={() => handleEdit(assigned)}
                               className="p-1 text-gray-500 hover:text-indigo-600"
@@ -487,7 +563,7 @@ export default function AssignTarget() {
         </div>
       </div>
 
-      {/* Assign/Edit Dialog (hidden for interns via button; still present for non-interns) */}
+      {/* Assign/Edit Dialog */}
       <Dialog
         open={openForm}
         onClose={() => {
@@ -644,6 +720,7 @@ export default function AssignTarget() {
         onClose={() => {
           setViewOpen(false);
           setViewTarget(null);
+          setVerifiedSubscriptions([]);
         }}
         title="Assigned Target Details"
       >
@@ -658,7 +735,9 @@ export default function AssignTarget() {
             <div>
               <p className="text-sm text-gray-500">Assigned By</p>
               <p className="font-medium text-gray-900">
-                {viewTarget.assigner ? `${viewTarget.assigner.fname || ""} ${viewTarget.assigner.lname || ""}`.trim() : "Unknown"}
+                {viewTarget.assigner
+                  ? `${viewTarget.assigner.fname || ""} ${viewTarget.assigner.lname || ""}`.trim()
+                  : "Unknown"}
               </p>
             </div>
 
@@ -670,11 +749,15 @@ export default function AssignTarget() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-sm text-gray-500">Start Date</p>
-                <p className="font-medium text-gray-900">{new Date(viewTarget.start_date).toLocaleDateString()}</p>
+                <p className="font-medium text-gray-900">
+                  {new Date(viewTarget.start_date).toLocaleDateString()}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-gray-500">End Date</p>
-                <p className="font-medium text-gray-900">{new Date(viewTarget.end_date).toLocaleDateString()}</p>
+                <p className="font-medium text-gray-900">
+                  {new Date(viewTarget.end_date).toLocaleDateString()}
+                </p>
               </div>
             </div>
 
@@ -688,23 +771,59 @@ export default function AssignTarget() {
               <p className="font-medium text-gray-900">{viewTarget.remarks || "-"}</p>
             </div>
 
+            {/* PLAN PROGRESS TABLE */}
             <div>
-              <p className="text-sm text-gray-500">Plans</p>
-              {viewTarget.target && viewTarget.target.plans && Object.keys(viewTarget.target.plans).length > 0 ? (
-                <div className="mt-2 space-y-2">
-                  {Object.entries(viewTarget.target.plans).map(([planId, count]) => (
-                    <div key={planId} className="flex justify-between items-center border rounded-md p-2">
-                      <div className="text-sm text-gray-700 break-all">
-                        <span className="font-medium">Plan:</span> {getPlanName(planId)}
-                      </div>
-                      <div className="text-sm font-medium text-gray-900">{count}</div>
-                    </div>
-                  ))}
+              <p className="text-sm text-gray-500 font-medium mb-1">Plan Progress</p>
+              <p className="text-xs text-gray-400 mb-2">
+                Only verified subscriptions submitted between{" "}
+                {new Date(viewTarget.start_date).toLocaleDateString()} and{" "}
+                {new Date(viewTarget.end_date).toLocaleDateString()} are counted.
+              </p>
+
+              {planProgress.length > 0 ? (
+                <div className="mt-1 overflow-x-auto">
+                  <table className="min-w-full border rounded-lg text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Plan</th>
+                        <th className="px-3 py-2 text-center font-semibold">Target</th>
+                        <th className="px-3 py-2 text-center font-semibold">Verified</th>
+                        <th className="px-3 py-2 text-center font-semibold">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {planProgress.map((row) => (
+                        <tr key={row.planId} className="border-t">
+                          <td className="px-3 py-2">{row.planName}</td>
+                          <td className="px-3 py-2 text-center">{row.target}</td>
+                          <td className="px-3 py-2 text-center">{row.verified}</td>
+                          <td className="px-3 py-2 text-center">
+                            {row.status === "Completed" && (
+                              <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                                Completed
+                              </span>
+                            )}
+                            {row.status === "In Progress" && (
+                              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                                In Progress
+                              </span>
+                            )}
+                            {row.status === "Pending" && (
+                              <span className="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-medium">
+                                Pending
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">No plans available for this target</p>
+                <p className="mt-1 text-sm text-gray-500">
+                  No plan targets configured or no matching verified subscriptions for this period.
+                </p>
               )}
-
             </div>
 
             <div className="flex justify-end pt-4 border-t">
@@ -712,6 +831,7 @@ export default function AssignTarget() {
                 onClick={() => {
                   setViewOpen(false);
                   setViewTarget(null);
+                  setVerifiedSubscriptions([]);
                 }}
                 className="px-4 py-2"
               >
@@ -723,6 +843,21 @@ export default function AssignTarget() {
           <div className="text-gray-500">No details to show</div>
         )}
       </Dialog>
+
+      {/* Send Warning Modal */}
+      {warningTarget && (
+        <SendWarningModal
+          open={warningOpen}
+          onClose={() => {
+            setWarningOpen(false);
+            setWarningTarget(null);
+          }}
+          toUserId={warningTarget.user_id}
+          targetId={warningTarget.id}
+          employeeName={getEmployeeName(warningTarget)}
+          targetDescription={getTargetDescription(warningTarget)}
+        />
+      )}
     </div>
   );
 }

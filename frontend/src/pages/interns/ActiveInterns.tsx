@@ -113,6 +113,8 @@ const ActiveInterns: React.FC = () => {
 
   // Logged-in user
   const [loggedInUser, setLoggedInUser] = useState<any>(null);
+  const isManager = loggedInUser?.role === "MANAGER";
+
   // optional loading flag for extension status update
   const [updatingExtensionId, setUpdatingExtensionId] = useState<string | null>(null);
 
@@ -574,7 +576,7 @@ const ActiveInterns: React.FC = () => {
               <TH>Joining Date</TH>
               <TH>End Date</TH>
               <TH>Work Type</TH>
-              <TH>Manager</TH>
+              {/* <TH>Manager</TH> */}
               <TH>Verification</TH>
               <TH>Extension</TH>
               <TH>Termination</TH>
@@ -586,7 +588,7 @@ const ActiveInterns: React.FC = () => {
               const extStatus = getLatestExtensionStatus(intern.id);
               const termStatus = getTerminationStatus(intern.id);
               const endDate = calculateInternshipEndDate(intern.join_date, intern.internship_duration_months, intern.internship_duration_days);
-              const managerName = interns.find(m => m.id === intern.manager_id)?.fname || '-';
+              // const managerName = interns.find(m => m.id === intern.manager_id)?.fname || '-';
 
               return (
                 <TR key={intern.id}>
@@ -602,7 +604,7 @@ const ActiveInterns: React.FC = () => {
                     ) : '-'}
                   </TD>
                   <TD>{intern.work_type || '-'}</TD>
-                  <TD>{managerName}</TD>
+                  {/* <TD>{managerName}</TD> */}
                   <TD>{intern.personalDetail.verification_status}</TD>
                   <TD>
                     {extStatus ? (
@@ -610,8 +612,8 @@ const ActiveInterns: React.FC = () => {
 
                         {/* Status badge */}
                         <span className={`px-2 py-1 rounded text-xs font-semibold ${extStatus.status?.toUpperCase() === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
-                            extStatus.status?.toUpperCase() === 'APPROVED' ? 'bg-green-100 text-green-800' :
-                              'bg-red-100 text-red-800'
+                          extStatus.status?.toUpperCase() === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                            'bg-red-100 text-red-800'
                           }`}>
                           {extStatus.status?.toUpperCase()}
                         </span>
@@ -654,14 +656,23 @@ const ActiveInterns: React.FC = () => {
                   </TD>
                   <TD>
                     <div className="flex gap-2">
+
+                      {/* View Button — visible to all */}
                       <Button variant="outline" onClick={() => setSelectedIntern(intern)}>
                         <Eye size={18} />
                       </Button>
-                      <Button variant="outline" onClick={() => setShowEditModal(intern)}>
-                        <Edit size={18} />
-                      </Button>
+
+                      {/* Edit Button — HIDE for MANAGER */}
+                      {!isManager && (
+                        <Button variant="outline" onClick={() => setShowEditModal(intern)}>
+                          <Edit size={18} />
+                        </Button>
+                      )}
+
+                      {/* Extension + Termination Buttons — visible for Admin, HR, Manager but Manager should NOT edit */}
                       {!termStatus && (
                         <>
+                          {/* Request Extension */}
                           <Button
                             variant="outline"
                             onClick={() => {
@@ -679,22 +690,24 @@ const ActiveInterns: React.FC = () => {
                           >
                             ⏱️
                           </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              setTerminationInternId(intern.id);
-                              setTerminationForm({ reason: "" });
-                              setShowTerminationModal(true);
-                            }}
-                            title="Terminate"
-                            className="text-red-600"
-                          >
-                            ❌
-                          </Button>
+
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setTerminationInternId(intern.id);
+                                setTerminationForm({ reason: "" });
+                                setShowTerminationModal(true);
+                              }}
+                              title="Terminate"
+                              className="text-red-600"
+                            >
+                              ❌
+                            </Button>
                         </>
                       )}
                     </div>
                   </TD>
+
                 </TR>
               );
             })}

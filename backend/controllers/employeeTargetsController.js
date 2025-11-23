@@ -1,33 +1,63 @@
 const db = require('../models');
 const { EmployeeTarget, User, TargetsMaster } = db;
+const { Op } = require('sequelize');
 
 // List all employee targets
 exports.getAll = async (req, res) => {
   try {
-    const userId = req.user?.id;
-    const Role = await db.Role.findByPk(req.user.role_id).then(r => r.code);
-    if(Role === 'INTERN') {
-      const where = {user_id: userId};
-      const records = await EmployeeTarget.findAll({
-        where,
-        include: [
-          { model: User, as: 'user', attributes: ['id', 'fname', 'lname', 'email'] },
-          { model: TargetsMaster, as: 'target' },
-          { model: User, as: 'assigner', attributes: ['id', 'fname', 'lname'] },
-        ],
-      });
-      return res.json(records);       
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+
+    const roleCode = req.user.Role?.code || (await db.Role.findByPk(req.user.role_id).then(r => r.code));
+    let whereCondition = {};
+
+    // -------------------------------
+    // INTERN → Only their own targets
+    // -------------------------------
+    if (roleCode === "INTERN") {
+      whereCondition = { user_id: req.user.id };
     }
+
+    // --------------------------------------------------------
+    // MANAGER → Only targets of interns assigned to the manager
+    // --------------------------------------------------------
+    else if (roleCode === "MANAGER") {
+      const interns = await User.findAll({
+        where: { manager_id: req.user.id },
+        include: [
+          { model: db.Role, where: { code: "INTERN" }, attributes: [] }
+        ],
+        attributes: ["id"],
+      });
+
+      const internIds = interns.map(i => i.id);
+
+      if (!internIds.length) {
+        return res.json([]);  // No interns → no targets
+      }
+
+      whereCondition = { user_id: { [Op.in]: internIds } };
+    }
+
+    // --------------------
+    // ADMIN → All records
+    // No whereCondition
+    // --------------------
+
     const records = await EmployeeTarget.findAll({
+      where: whereCondition,
       include: [
         { model: User, as: 'user', attributes: ['id', 'fname', 'lname', 'email'] },
         { model: TargetsMaster, as: 'target' },
         { model: User, as: 'assigner', attributes: ['id', 'fname', 'lname'] },
       ],
-    }); 
-    res.json(records);
+      order: [["created_at", "DESC"]],
+    });
+
+    return res.json(records);
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: err.message });
   }
 };
 

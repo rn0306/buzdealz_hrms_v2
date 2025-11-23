@@ -29,6 +29,7 @@ import Reports from './pages/reports/Reports'
 import Activities from './pages/activityLogs/Activities'
 import Profile from './pages/profile/Profile'
 import SetNewPassword from './pages/SetNewPassword'
+import Notifications from './pages/Notifications'
 
 function Protected({ children }: { children: React.ReactNode }) {
   const loc = useLocation()
@@ -88,6 +89,7 @@ export default function App() {
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/email-templates" element={<EmailTemplates />} />
                 <Route path="/activities" element={<Activities />} />
+                <Route path="/notifications" element={<Notifications />} />
                 <Route path="/profile" element={<Profile />} />
                 
                 <Route path="*" element={

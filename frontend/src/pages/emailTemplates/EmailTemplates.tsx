@@ -191,42 +191,6 @@ export default function TemplateManager() {
     }
   }
 
-  // --- Document PDF Preview/Attach/Send ---
-  async function previewDocPdf(template: DocumentTemplate) {
-    try {
-      const res = await api.post(
-        "/api/documents/generate",
-        { template_id: template.id, data: {} },
-        { responseType: "blob" }
-      );
-      const url = URL.createObjectURL(res.data);
-      setDocPdfUrl(url);
-      setShowDocPreview(true);
-    } catch (err: any) {
-      toast.error("Failed to generate PDF");
-    }
-  }
-
-  async function downloadDocPdf(template: DocumentTemplate) {
-    try {
-      const res = await api.post(
-        "/api/documents/generate",
-        { template_id: template.id, data: {} },
-        { responseType: "blob" }
-      );
-      const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `${template.name || "document"}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err: any) {
-      toast.error("Failed to download PDF");
-    }
-  }
-
   async function sendDocumentByEmail(template: DocumentTemplate) {
     const recipient = window.prompt("Enter recipient email (e.g. user@example.com):");
     if (!recipient) return;
@@ -591,20 +555,6 @@ export default function TemplateManager() {
             <h2 className="text-2xl font-semibold text-blue-900 mb-4">Preview: {editingDoc.name}</h2>
             <div className="border rounded-lg p-4 bg-gray-50" dangerouslySetInnerHTML={{ __html: editingDoc.body_html }} />
             <div className="flex justify-end mt-6 gap-3">
-              {docPdfUrl ? (
-                <>
-                  <a href={docPdfUrl} target="_blank" rel="noreferrer" className="px-4 py-2 rounded-xl bg-gray-200 text-gray-800">
-                    Open PDF
-                  </a>
-                  <Button type="button" onClick={() => downloadDocPdf(editingDoc)} className="bg-green-600 text-white">
-                    Download PDF
-                  </Button>
-                </>
-              ) : (
-                <Button type="button" onClick={() => previewDocPdf(editingDoc)} className="bg-indigo-600 text-white">
-                  Generate PDF
-                </Button>
-              )}
               <Button type="button" onClick={() => setShowDocPreview(false)} className="bg-blue-600 text-white">
                 Close
               </Button>
@@ -624,9 +574,6 @@ export default function TemplateManager() {
                 <a href={docPdfUrl} target="_blank" rel="noreferrer" className="px-3 py-1 bg-gray-100 rounded">
                   Open
                 </a>
-                <Button type="button" onClick={() => downloadDocPdf(editingDoc!)} className="bg-green-600 text-white rounded">
-                  Download
-                </Button>
                 <Button
                   type="button"
                   onClick={() => sendDocumentByEmail(editingDoc!)}

@@ -54,38 +54,22 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
       path: '/interns/active'
     },
     {
-      label: 'Subscriptions',
-      icon: 'Database',
-      children: [
-        { label: 'Add Subscription', path: '/subscriptions/add' },
-        { label: 'My Subscriptions', path: '/subscriptions/list' },
-        // { label: 'Verification', path: '/subscriptions/verify' },
-      ],
-    },
-    {
       label: 'Performance',
       icon: 'BarChart',
       children: [
         { label: 'Targets', path: '/performance/targets' },
         { label: 'Employee Targets', path: '/performance/employee_targets' },
-        { label: 'Evaluation', path: '/performance/evaluation' },
+        // { label: 'Evaluation', path: '/performance/evaluation' },
       ],
     },
     // { label: 'Documents', icon: 'FileText', path: '/documents' },
     { label: 'Reports', icon: 'PieChart', path: '/reports' },
-    { label: 'Email Templates', icon: 'FileText', path: '/email-templates' },
+    { label: 'Templates', icon: 'FileText', path: '/email-templates' },
     { label: 'Activities', icon: 'ClipboardCheck', path: '/activities' },
   ],
   intern: [
     { label: 'Dashboard', icon: 'Home', path: '/dashboard' },
-    {
-      label: 'Subscriptions',
-      icon: 'Database',
-      children: [
-        { label: 'Add Subscription', path: '/subscriptions/add' },
-        { label: 'My Subscriptions', path: '/subscriptions/list' },
-      ],
-    },
+    {label: 'Add Subscription', path: '/subscriptions/add', icon: 'Database'},
     { label: 'Targets & Tasks', icon: 'Target', path: '/performance/employee_targets' },
     { label: 'Activities', icon: 'ClipboardCheck', path: '/activities' },
     { label: 'My Profile', icon: 'User', path: '/profile' },
@@ -113,22 +97,14 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
   ],
   manager: [
     { label: 'Dashboard', icon: 'Home', path: '/dashboard' },
-    {
-      label: 'Intern Management',
-      icon: 'GraduationCap',
-      children: [
-        { label: 'Active Interns', path: '/interns/active' },
-        { label: 'Extensions', path: '/interns/extensions' },
-        { label: 'Terminations', path: '/interns/terminations' },
-      ],
-    },
+    { label: 'Active Interns', path: '/interns/active', icon: 'GraduationCap' },
     {
       label: 'Performance',
       icon: 'BarChart',
       children: [
         { label: 'Targets', path: '/performance/targets' },
         { label: 'Employee Targets', path: '/performance/employee_targets' },
-        { label: 'Evaluation', path: '/performance/evaluation' },
+        // { label: 'Evaluation', path: '/performance/evaluation' },
       ],
     },
     { label: 'Reports', icon: 'PieChart', path: '/reports' },

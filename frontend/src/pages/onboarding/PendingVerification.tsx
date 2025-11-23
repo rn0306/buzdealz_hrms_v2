@@ -6,7 +6,6 @@ import Dialog from '../../components/ui/Dialog'
 import Input from '../../components/ui/Input'
 import { Table, THead, TBody, TR, TH, TD } from '../../components/ui/Table'
 
-
 type Candidate = {
   id: string
   full_name: string
@@ -40,12 +39,11 @@ type Candidate = {
     duration?: string
   }
   otherDocuments?: string
-  joiningDate?: string
-  confirmationDate?: string
+  joiningDate?: string | null
+  confirmationDate?: string | null
   verificationStatus?: 'Pending' | 'VERIFIED' | 'REJECTED'
   rejectComment?: string
 }
-
 
 type EmailTemplate = {
   id: string
@@ -60,7 +58,6 @@ type DocumentTemplate = {
   body_html: string
   category: string
 }
-
 
 export default function PendingVerification() {
   const [rows, setRows] = useState<Candidate[]>([])
@@ -93,7 +90,7 @@ export default function PendingVerification() {
     const q = query.toLowerCase()
     return rows.filter((r) =>
       [r.full_name, r.email, r.phone, r.source, r.verificationStatus].some((v) =>
-        (v || '').toLowerCase().includes(q)
+        (v || '').toString().toLowerCase().includes(q)
       )
     )
   }, [rows, query])
@@ -109,8 +106,8 @@ export default function PendingVerification() {
         const s = String(v).trim()
         if (!s) return undefined
         const up = s.toUpperCase()
-        if (up.includes('VERIFIED')) return 'Verified'
-        if (up.includes('REJECT')) return 'Rejected'
+        if (up.includes('VERIFIED')) return 'VERIFIED'
+        if (up.includes('REJECT')) return 'REJECTED'
         if (up.includes('PEND')) return 'Pending'
         return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
       }
@@ -153,7 +150,7 @@ export default function PendingVerification() {
             duration: r.duration || '-',
           },
           otherDocuments: r.other_documents_url || '-',
-        }
+        } as Candidate
       })
 
       setRows(normalized)
@@ -180,11 +177,8 @@ export default function PendingVerification() {
   }
 
   function openView(candidate: Candidate) {
-    console.log('joining date', candidate.joiningDate)
-    console.log('confirmation date', candidate.confirmationDate)
     setSelectedCandidate(candidate)
     setRejectComment(candidate.rejectComment || '')
-    // Prefill joining and confirmation dates if available
     setJoiningDate(candidate.joiningDate ? String(candidate.joiningDate).slice(0, 10) : '')
     setConfirmationDate(formatToDateTimeLocal(candidate.confirmationDate || null))
     setOpenViewId(candidate.id)
@@ -214,7 +208,6 @@ export default function PendingVerification() {
     }
 
     try {
-      // confirmationDate state is in datetime-local format (YYYY-MM-DDTHH:mm)
       const confirmationToSend = action === 'VERIFIED'
         ? (confirmationDate && confirmationDate.includes('T') ? new Date(confirmationDate).toISOString() : new Date().toISOString())
         : null
@@ -226,7 +219,6 @@ export default function PendingVerification() {
         confirmationDate: confirmationToSend,
       })
 
-      // Update local state for the row to avoid full reload
       const updatedCandidate: Candidate = {
         ...selectedCandidate,
         verificationStatus: (action === 'VERIFIED' ? 'VERIFIED' : 'REJECTED') as 'VERIFIED' | 'REJECTED' | 'PENDING',
@@ -253,12 +245,14 @@ export default function PendingVerification() {
     setSelectedDocTemplateId('')
     setSelectedDocTemplate(null)
     setOfferPdfUrl(null)
+
     try {
       const res = await api.get('/api/email-templates')
       setTemplates(res.data.data || [])
     } catch (err: any) {
-      toast.error('Failed to load templates')
+      toast.error('Failed to load email templates')
     }
+
     try {
       const res = await api.get('/api/document-templates')
       setDocTemplates(res.data.data || [])
@@ -267,7 +261,7 @@ export default function PendingVerification() {
     }
   }
 
-  // 📨 Handle template change
+  // 📨 Handle email template change
   function handleTemplateChange(id: string) {
     setSelectedTemplateId(id)
     const t = templates.find((x) => x.id === id) || null
@@ -279,33 +273,35 @@ export default function PendingVerification() {
     setSelectedDocTemplateId(id)
     const t = docTemplates.find((x) => x.id === id) || null
     setSelectedDocTemplate(t)
+    setOfferPdfUrl(null)
   }
 
-  // 📄 Generate Offer Letter PDF
+  // 📄 Generate Offer Letter PDF Preview (for iframe only)
   async function generateOfferPdf() {
     if (!selectedDocTemplate || !mailCandidate) {
-      toast.error('Please select a document template')
+      toast.error('Please select a document template and candidate')
       return
     }
     setGeneratingOffer(true)
+    setOfferPdfUrl(null)
     try {
       const res = await api.post(
         '/api/documents/generate',
-        { 
-          template_id: selectedDocTemplate.id, 
+        {
+          template_id: selectedDocTemplate.id,
           data: {
             full_name: mailCandidate.full_name,
             email: mailCandidate.email,
             phone: mailCandidate.phone || '',
             joining_date: mailCandidate.joiningDate || '',
-            designation: 'Intern'
-          }
+            designation: 'Intern',
+          },
         },
         { responseType: 'blob' }
       )
       const url = URL.createObjectURL(res.data)
       setOfferPdfUrl(url)
-      toast.success('Offer letter generated successfully')
+      toast.success('Offer letter preview ready')
     } catch (err: any) {
       toast.error('Failed to generate offer letter')
     } finally {
@@ -313,7 +309,7 @@ export default function PendingVerification() {
     }
   }
 
-  // 📄 Download Offer Letter PDF
+  // 📄 Optionally allow download from preview block (not required for sending)
   async function downloadOfferPdf() {
     if (!selectedDocTemplate || !mailCandidate) {
       toast.error('Please select a document template')
@@ -322,22 +318,27 @@ export default function PendingVerification() {
     try {
       const res = await api.post(
         '/api/documents/generate',
-        { 
-          template_id: selectedDocTemplate.id, 
+        {
+          template_id: selectedDocTemplate.id,
           data: {
             full_name: mailCandidate.full_name,
             email: mailCandidate.email,
             phone: mailCandidate.phone || '',
             joining_date: mailCandidate.joiningDate || '',
-            designation: 'Intern'
-          }
+            designation: 'Intern',
+          },
         },
         { responseType: 'blob' }
       )
-      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      const url = window.URL.createObjectURL(
+        new Blob([res.data], { type: 'application/pdf' })
+      )
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', `offer_letter_${mailCandidate.full_name}.pdf`)
+      link.setAttribute(
+        'download',
+        `offer_letter_${(mailCandidate.full_name || 'candidate').replace(/\s+/g, '_')}.pdf`
+      )
       document.body.appendChild(link)
       link.click()
       link.remove()
@@ -348,68 +349,10 @@ export default function PendingVerification() {
     }
   }
 
-  // 📄 Send Mail with Offer Letter Attachment
-  async function sendMailWithOfferLetter() {
-    if (!mailCandidate || !selectedTemplate) {
-      toast.error('Please select an email template')
-      return
-    }
-    
-    setSendingMail(true)
-    try {
-      // Generate PDF as blob
-      let attachmentData = null
-      if (selectedDocTemplate) {
-        const res = await api.post(
-          '/api/documents/generate',
-          { 
-            template_id: selectedDocTemplate.id, 
-            data: {
-              full_name: mailCandidate.full_name,
-              email: mailCandidate.email,
-              phone: mailCandidate.phone || '',
-              joining_date: mailCandidate.joiningDate || '',
-              designation: 'Intern'
-            }
-          },
-          { responseType: 'blob' }
-        )
-        attachmentData = res.data
-      }
-
-      // Prepare FormData to send file
-      const formData = new FormData()
-      formData.append('template_id', selectedTemplate.id)
-      formData.append('recipient_email', mailCandidate.email)
-      formData.append('recipient_name', mailCandidate.full_name)
-      formData.append('data', JSON.stringify({
-        full_name: mailCandidate.full_name,
-        email: mailCandidate.email,
-        phone: mailCandidate.phone || '',
-        password: mailCandidate.fname?.toLocaleLowerCase() + '123$' || '',
-      }))
-      
-      if (attachmentData && selectedDocTemplate) {
-        formData.append('attachment', attachmentData, `offer_letter_${mailCandidate.full_name}.pdf`)
-      }
-
-      await api.post('/api/email-templates/send', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
-
-      toast.success(`Mail sent to ${mailCandidate.full_name} with offer letter`)
-      setOpenMailDialog(false)
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to send email with attachment')
-    } finally {
-      setSendingMail(false)
-    }
-  }
-
-  // 📨 Send mail API call
+  // 📨 Send email WITHOUT attachment (normal email template flow)
   async function sendMailToCandidate() {
     if (!mailCandidate || !selectedTemplate) {
-      toast.error('Please select a template')
+      toast.error('Please select an email template')
       return
     }
     setSendingMail(true)
@@ -430,6 +373,50 @@ export default function PendingVerification() {
       setOpenMailDialog(false)
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Failed to send email')
+    } finally {
+      setSendingMail(false)
+    }
+  }
+
+  // 📨 Send email WITH offer letter PDF (backend handles PDF and attachment)
+  async function sendMailWithOfferLetter() {
+    if (!mailCandidate) {
+      toast.error('Candidate not selected')
+      return
+    }
+    if (!selectedDocTemplate) {
+      toast.error('Please select a document template')
+      return
+    }
+
+    setSendingMail(true)
+    try {
+      await api.post('/api/documents/send', {
+        template_id: selectedDocTemplate.id,
+        recipient_email: mailCandidate.email,
+        // subject: use document template name (Option 1)
+        subject: selectedDocTemplate.name,
+        data: {
+          full_name: mailCandidate.full_name,
+          email: mailCandidate.email,
+          phone: mailCandidate.phone || '',
+          joining_date: mailCandidate.joiningDate || '',
+          designation: 'Intern',
+          password: mailCandidate.fname?.toLocaleLowerCase() + '123$' || '',
+        },
+        // optional linkage to email template to render subject/body via Mustache
+        email_template_id: selectedTemplate?.id,
+      })
+
+      toast.success(
+        selectedTemplate
+          ? `Mail with offer letter sent using email template "${selectedTemplate.name}"`
+          : 'Mail with offer letter sent'
+      )
+      setOpenMailDialog(false)
+    } catch (err: any) {
+      console.error('Error sending mail with offer letter', err)
+      toast.error(err?.response?.data?.error || err?.response?.data?.message || 'Failed to send email with offer letter')
     } finally {
       setSendingMail(false)
     }
@@ -456,7 +443,7 @@ export default function PendingVerification() {
             disabled={loading}
             className="px-4 py-2 rounded-lg border border-gray-300 shadow-sm hover:bg-gray-50"
           >
-            {loading ? "Loading..." : "Refresh"}
+            {loading ? 'Loading...' : 'Refresh'}
           </Button>
         </div>
       </div>
@@ -487,12 +474,13 @@ export default function PendingVerification() {
                 <TD className="px-6 py-4">{r.phone || '-'}</TD>
                 <TD className="px-6 py-4 font-medium">
                   <span
-                    className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${r.verificationStatus === 'VERIFIED'
-                      ? 'bg-green-100 text-green-800'
-                      : r.verificationStatus === 'REJECTED'
+                    className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${
+                      r.verificationStatus === 'VERIFIED'
+                        ? 'bg-green-100 text-green-800'
+                        : r.verificationStatus === 'REJECTED'
                         ? 'bg-red-100 text-red-800'
                         : 'bg-yellow-100 text-yellow-800'
-                      }`}
+                    }`}
                   >
                     {r.verificationStatus || 'Pending'}
                   </span>
@@ -528,6 +516,7 @@ export default function PendingVerification() {
         </Table>
       </div>
 
+      {/* Candidate Details Dialog */}
       <Dialog
         open={!!openViewId}
         onClose={closeView}
@@ -685,12 +674,13 @@ export default function PendingVerification() {
               <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">Verification Status</h2>
               <div className="flex items-center gap-3 mt-4">
                 <span
-                  className={`inline-block rounded-full px-4 py-1 text-sm font-semibold ${selectedCandidate.verificationStatus === 'VERIFIED'
-                    ? 'bg-green-200 text-green-800'
-                    : selectedCandidate.verificationStatus === 'REJECTED'
+                  className={`inline-block rounded-full px-4 py-1 text-sm font-semibold ${
+                    selectedCandidate.verificationStatus === 'VERIFIED'
+                      ? 'bg-green-200 text-green-800'
+                      : selectedCandidate.verificationStatus === 'REJECTED'
                       ? 'bg-red-200 text-red-800'
                       : 'bg-yellow-200 text-yellow-800'
-                    }`}
+                  }`}
                 >
                   {selectedCandidate.verificationStatus || 'Pending'}
                 </span>
@@ -713,7 +703,6 @@ export default function PendingVerification() {
                   onChange={(e) => {
                     const v = e.target.value as 'VERIFIED' | 'REJECTED' | ''
                     setAction(v || null)
-                    // Prefill confirmation date when moving to verified
                     if (v === 'VERIFIED') {
                       if (!joiningDate) setJoiningDate(new Date().toISOString().slice(0, 10))
                       setConfirmationDate(new Date().toISOString().slice(0, 16))
@@ -750,7 +739,7 @@ export default function PendingVerification() {
                 </div>
               )}
 
-              {action === 'reject' && (
+              {action === 'REJECTED' && (
                 <div className="mb-6">
                   <label className="block mb-2 font-semibold text-indigo-700">Reject Comment</label>
                   <textarea
@@ -771,8 +760,10 @@ export default function PendingVerification() {
                 >
                   Cancel
                 </Button>
-                <Button type="button" onClick={handleSave}
-                  disabled={action === null || (action === 'reject' && rejectComment.trim() === '')}
+                <Button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={action === null || (action === 'REJECTED' && rejectComment.trim() === '')}
                   className="rounded-lg px-6 py-3 font-semibold shadow-lg bg-gradient-to-r from-indigo-600 to-blue-700 text-white hover:from-indigo-700 hover:to-blue-800 transition"
                 >
                   Save
@@ -784,8 +775,13 @@ export default function PendingVerification() {
       </Dialog>
 
       {/* 📨 Send Mail Dialog */}
-      <Dialog open={openMailDialog} onClose={() => setOpenMailDialog(false)} title={`Send Mail to ${mailCandidate?.full_name || ''}`}>
+      <Dialog
+        open={openMailDialog}
+        onClose={() => setOpenMailDialog(false)}
+        title={`Send Mail to ${mailCandidate?.full_name || ''}`}
+      >
         <div className="space-y-4 max-h-[80vh] overflow-y-auto">
+          {/* Email Template Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Select Email Template</label>
             <select
@@ -802,22 +798,27 @@ export default function PendingVerification() {
             </select>
           </div>
 
+          {/* Email Template Preview */}
           {selectedTemplate && (
             <div className="p-3 border rounded-md bg-gray-50">
               <h3 className="font-semibold text-blue-900 mb-1">Subject:</h3>
-              <p className="text-gray-700 mb-2">{selectedTemplate.subject.replace('{{full_name}}', mailCandidate?.full_name || '')}</p>
+              <p className="text-gray-700 mb-2">
+                {selectedTemplate.subject.replace('{{full_name}}', mailCandidate?.full_name || '')}
+              </p>
               <h3 className="font-semibold text-blue-900 mb-1">Body Preview:</h3>
               <div
                 className="text-sm text-gray-800"
                 dangerouslySetInnerHTML={{
-                  __html: selectedTemplate.body_html.replace('{{full_name}}', mailCandidate?.full_name || '')
+                  __html: selectedTemplate.body_html
+                    .replace('{{full_name}}', mailCandidate?.full_name || '')
                     .replace('{{email}}', mailCandidate?.email || '')
-                    .replace('{{password}}', mailCandidate?.fname?.toLocaleLowerCase() + '123$' || '')
+                    .replace('{{password}}', mailCandidate?.fname?.toLocaleLowerCase() + '123$' || ''),
                 }}
               />
             </div>
           )}
 
+          {/* Offer Letter Section */}
           <div className="border-t pt-4">
             <h3 className="font-semibold text-gray-900 mb-3">📄 Offer Letter (Optional)</h3>
             <div>
@@ -837,19 +838,13 @@ export default function PendingVerification() {
             </div>
 
             {selectedDocTemplate && (
-              <div className="mt-3 flex gap-2">
+              <div className="mt-3">
                 <Button
                   onClick={generateOfferPdf}
                   disabled={generatingOffer}
-                  className="flex-1 bg-indigo-600 text-white rounded-md px-3 py-2"
+                  className="w-full bg-indigo-600 text-white rounded-md px-3 py-2"
                 >
-                  {generatingOffer ? 'Generating...' : '👁️ Preview'}
-                </Button>
-                <Button
-                  onClick={downloadOfferPdf}
-                  className="flex-1 bg-green-600 text-white rounded-md px-3 py-2"
-                >
-                  ⬇️ Download
+                  {generatingOffer ? 'Generating...' : '👁️ Preview Offer Letter'}
                 </Button>
               </div>
             )}
@@ -857,15 +852,31 @@ export default function PendingVerification() {
             {offerPdfUrl && (
               <div className="mt-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="text-sm text-blue-700">✓ Offer letter ready to be sent as attachment</div>
+                  <div className="text-sm text-blue-700">
+                    ✓ Offer letter preview ready (it will be attached when sending)
+                  </div>
                   <div className="flex gap-2">
-                    <a href={offerPdfUrl} target="_blank" rel="noreferrer" className="px-3 py-1 bg-gray-100 rounded text-sm">
+                    <a
+                      href={offerPdfUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1 bg-gray-100 rounded text-sm"
+                    >
                       Open
                     </a>
-                    <Button onClick={downloadOfferPdf} className="bg-green-600 text-white px-3 py-1 rounded text-sm">
+                    <Button
+                      onClick={downloadOfferPdf}
+                      className="bg-green-600 text-white px-3 py-1 rounded text-sm"
+                    >
                       Download
                     </Button>
-                    <Button onClick={() => { URL.revokeObjectURL(offerPdfUrl); setOfferPdfUrl(null); }} className="bg-red-100 px-3 py-1 rounded text-sm">
+                    <Button
+                      onClick={() => {
+                        URL.revokeObjectURL(offerPdfUrl)
+                        setOfferPdfUrl(null)
+                      }}
+                      className="bg-red-100 px-3 py-1 rounded text-sm"
+                    >
                       Close
                     </Button>
                   </div>
@@ -878,23 +889,36 @@ export default function PendingVerification() {
             )}
           </div>
 
+          {/* Dialog Actions */}
           <div className="flex justify-end gap-3 pt-3 border-t">
-            <Button variant="outline" onClick={() => setOpenMailDialog(false)} className="rounded-md px-4 py-2 shadow-sm">
+            <Button
+              variant="outline"
+              onClick={() => setOpenMailDialog(false)}
+              className="rounded-md px-4 py-2 shadow-sm"
+            >
               Cancel
             </Button>
-            {selectedDocTemplate && offerPdfUrl ? (
-              <Button onClick={sendMailWithOfferLetter} disabled={sendingMail} className="rounded-md px-4 py-2 shadow-md bg-blue-600 text-white">
+
+            {selectedDocTemplate ? (
+              <Button
+                onClick={sendMailWithOfferLetter}
+                disabled={sendingMail}
+                className="rounded-md px-4 py-2 shadow-md bg-blue-600 text-white"
+              >
                 {sendingMail ? 'Sending...' : 'Send with Offer Letter'}
               </Button>
             ) : (
-              <Button onClick={sendMailToCandidate} disabled={sendingMail} className="rounded-md px-4 py-2 shadow-md">
+              <Button
+                onClick={sendMailToCandidate}
+                disabled={sendingMail}
+                className="rounded-md px-4 py-2 shadow-md"
+              >
                 {sendingMail ? 'Sending...' : 'Send Mail'}
               </Button>
             )}
           </div>
         </div>
       </Dialog>
-
     </section>
   )
 }

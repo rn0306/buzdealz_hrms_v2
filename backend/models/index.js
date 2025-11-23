@@ -17,6 +17,7 @@ const Plans = require('./Plans');
 const TargetsMaster = require('./targets_master'); 
 const EmployeeTarget = require('./employee_targets');
 const EmployeeTargetProgress = require('./employee_target_progress');
+const Notification = require('./Notification');
 
 // ======================
 // 🔗 Define Associations
@@ -82,11 +83,46 @@ EmployeeTarget.belongsTo(User, { foreignKey: 'assigned_by', as: 'assigner' });
 User.hasMany(EmployeeTarget, { foreignKey: 'assigned_by', as: 'assignedTargets' });
 
 // ==========================================
+// 🔔 NOTIFICATIONS ASSOCIATIONS
+// ==========================================
+
+// Notification → To User (recipient)
+Notification.belongsTo(User, { foreignKey: 'to_user_id', as: 'recipient' });
+User.hasMany(Notification, { foreignKey: 'to_user_id', as: 'receivedNotifications' });
+
+// Notification → From User (sender)
+Notification.belongsTo(User, { foreignKey: 'from_user_id', as: 'sender' });
+User.hasMany(Notification, { foreignKey: 'from_user_id', as: 'sentNotifications' });
+
+// Notification → EmployeeTarget
+Notification.belongsTo(EmployeeTarget, { foreignKey: 'target_id', as: 'target' });
+EmployeeTarget.hasMany(Notification, { foreignKey: 'target_id', as: 'notifications' });
+
+// ==========================================
 // 🔥 NEW ASSOCIATIONS FOR PLANS
 // ==========================================
 
 // No direct FK relation needed because plans are stored in TargetsMaster.plans (JSON)
 // But you can still manage standalone plan CRUD
+
+// ==========================================
+
+// ==========================================
+// InternSubscription ↔ Subscription
+// Add association so Sequelize `include` works when joining intern submissions
+// with their master subscription records. The master `Subscription` model
+// uses `subscription_id` as its unique identifier (not the PK), so we map
+// by that field.
+InternSubscription.belongsTo(subscription, {
+  foreignKey: 'subscription_id',
+  targetKey: 'subscription_id',
+  as: 'subscription_info'
+});
+subscription.hasMany(InternSubscription, {
+  foreignKey: 'subscription_id',
+  sourceKey: 'subscription_id',
+  as: 'intern_submissions'
+});
 
 // ==========================================
 
@@ -118,5 +154,6 @@ module.exports = {
   EmployeeTarget,
   EmployeeTargetProgress,
   InternSubscription,
+  Notification,
   syncDatabase,
 };

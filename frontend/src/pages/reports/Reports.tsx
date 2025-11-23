@@ -1,92 +1,372 @@
+import React, { useState, useEffect, useMemo } from "react";
+import { api } from "../../lib/api"; // Adjust the import path to your API utilities
+import {toast} from "sonner";
+import Button from "../../components/ui/Button";
+import Dialog from "../../components/ui/Dialog";
+
+interface AssignedTarget {
+  id: string;
+  userid: string;
+  targetid: string;
+  assignedby: string;
+  startdate: string;
+  enddate: string;
+  status: "Assigned" | "In Progress" | "Completed" | "Overdue";
+  remarks?: string;
+  monthlytarget: number;
+  smartinvesttarget: number;
+  flexsavertarget: number;
+  user?: {
+    id: string;
+    fname: string;
+    lname: string;
+    email: string;
+  };
+  assigner?: {
+    fname: string;
+    lname: string;
+  };
+  target?: {
+    targetdescription: string;
+    plans?: Record<string, number>;
+  };
+}
+
+// Plan progress row for modal display
+interface PlanProgressRow {
+  planId: string;
+  planName: string;
+  target: number;
+  verified: number;
+  status: "Completed" | "In Progress" | "Pending";
+}
+
 export default function Reports() {
+  // State
+  const [assignedTargets, setAssignedTargets] = useState<AssignedTarget[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+  const [viewTarget, setViewTarget] = useState<AssignedTarget | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [verifiedSubscriptions, setVerifiedSubscriptions] = useState<any[]>([]);
+
+  // Fetch assigned targets with date filter
+  async function fetchAssignedTargets() {
+    setLoading(true);
+    try {
+      // Assuming your API supports filtering by date query params
+      let query = "";
+      if (startDate) query += `startDate=${startDate}&`;
+      if (endDate) query += `endDate=${endDate}&`;
+
+      const res = await api.get(`/employeeTargets?${query}`);
+      setAssignedTargets(res.data || []);
+    } catch (err: any) {
+      toast.error("Failed to load employee targets");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchAssignedTargets();
+  }, [startDate, endDate]);
+
+  // Compute status counts for summary cards
+  const statusCounts = useMemo(() => {
+    const counts = { Completed: 0, "In Progress": 0, Assigned: 0, Overdue: 0 };
+    assignedTargets.forEach((target) => {
+      counts[target.status] = (counts[target.status] || 0) + 1;
+    });
+    return counts;
+  }, [assignedTargets]);
+
+  // Helper to get employee full name or email fallback
+  function getEmployeeName(assigned: AssignedTarget) {
+    if (assigned.user) {
+      const fullName = [assigned.user.fname, assigned.user.lname].filter(Boolean).join(" ");
+      return fullName || assigned.user.email || "Unknown";
+    }
+    return "Unknown";
+  }
+
+  // Helper to get target description
+  function getTargetDescription(assigned: AssignedTarget) {
+    return assigned.target?.targetdescription || "Unknown Target";
+  }
+
+  // Fetch verified subscription data for plan progress modal
+  async function handleView(assigned: AssignedTarget) {
+    setViewTarget(assigned);
+    setViewOpen(true);
+    try {
+      const res = await api.get(`/intern-subscriptions/user/${assigned.userid}`);
+      // Filter only VERIFIED submissions within assigned date range
+      const filtered = (res.data || []).filter((s: any) => {
+        const subDate = new Date(s.createdat).getTime();
+        const start = new Date(assigned.startdate).getTime();
+        const end = new Date(assigned.enddate).getTime();
+        return s.validationstatus === "VERIFIED" && subDate >= start && subDate <= end;
+      });
+      setVerifiedSubscriptions(filtered);
+    } catch (err) {
+      toast.error("Failed to load subscription progress");
+    }
+  }
+
+  // Plan progress rows for modal display
+  const planProgress: PlanProgressRow[] = useMemo(() => {
+    if (!viewTarget?.target?.plans) return [];
+    return Object.entries(viewTarget.target.plans).map(([planId, targetCount]) => {
+      const planName = planId; // You can map to a proper plan name if needed
+      const verifiedCount = verifiedSubscriptions.filter(
+        (s) => s.subscriptionplan === planName
+      ).length;
+      let status: PlanProgressRow["status"] = "Pending";
+      if (verifiedCount >= targetCount) status = "Completed";
+      else if (verifiedCount > 0) status = "In Progress";
+      return {
+        planId,
+        planName,
+        target: targetCount,
+        verified: verifiedCount,
+        status,
+      };
+    });
+  }, [viewTarget, verifiedSubscriptions]);
+
   return (
-    <section className="space-y-6">
-      <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
+    <section className="space-y-6 p-6">
+      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
             <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
               Reports & Analytics
             </span>
           </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Generate and view detailed reports of your HR operations
-          </p>
+          <p className="mt-1 text-sm text-gray-500">Generate and view detailed reports of your HR operations</p>
         </div>
-        <div className="flex items-center gap-3">
-          <button className="inline-flex items-center rounded-lg bg-blue-50 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-100">
-            <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Export Report
-          </button>
+        <div className="flex items-center gap-3 mt-4 sm:mt-0">
+          <Button onClick={() => alert("Export functionality to be integrated")}>Export Report</Button>
         </div>
+      </header>
+
+      {/* Date Filters */}
+      <div className="flex gap-4 flex-wrap mb-6 items-end">
+        <div>
+          <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">Start Date</label>
+          <input
+            id="startDate"
+            type="date"
+            className="mt-1 block w-auto rounded-md border border-gray-300 px-3 py-2"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+          />
+        </div>
+        <div>
+          <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">End Date</label>
+          <input
+            id="endDate"
+            type="date"
+            className="mt-1 block w-auto rounded-md border border-gray-300 px-3 py-2"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+          />
+        </div>
+        <button
+          onClick={() => {
+            setStartDate("");
+            setEndDate("");
+          }}
+          className="text-sm px-3 py-2 rounded bg-red-100 text-red-700 hover:bg-red-200"
+        >
+          Clear Filters
+        </button>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <div className="group cursor-pointer relative overflow-hidden rounded-xl border bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-md">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-blue-600 transition-colors duration-200 group-hover:bg-blue-600 group-hover:text-white">
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+      {/* Status Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+        {Object.entries(statusCounts).map(([status, count]) => {
+          const colors = {
+            Completed: "green",
+            "In Progress": "blue",
+            Assigned: "purple",
+            Overdue: "red",
+          } as const;
+          return (
+            <div
+              key={status}
+              className={`bg-${colors[status]}-50 border border-${colors[status]}-200 rounded-xl p-6 shadow-sm`}
+            >
+              <p className={`text-sm font-medium text-${colors[status]}-700`}>{status}</p>
+              <p className={`text-2xl font-bold text-${colors[status]}-700 mt-2`}>{count}</p>
             </div>
-            <div>
-              <h3 className="font-medium text-gray-900">Performance Reports</h3>
-              <p className="mt-1 text-sm text-gray-500">View employee performance metrics</p>
-            </div>
-          </div>
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600 transition-transform duration-200 group-hover:scale-100" style={{ transform: 'scaleX(0)', transformOrigin: 'left' }} />
-        </div>
-
-        <div className="group cursor-pointer relative overflow-hidden rounded-xl border bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-md">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 transition-colors duration-200 group-hover:bg-indigo-600 group-hover:text-white">
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="font-medium text-gray-900">Recruitment Analytics</h3>
-              <p className="mt-1 text-sm text-gray-500">Track recruitment pipeline stats</p>
-            </div>
-          </div>
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-indigo-600 to-purple-600 transition-transform duration-200 group-hover:scale-100" style={{ transform: 'scaleX(0)', transformOrigin: 'left' }} />
-        </div>
-
-        <div className="group cursor-pointer relative overflow-hidden rounded-xl border bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-md">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-purple-50 text-purple-600 transition-colors duration-200 group-hover:bg-purple-600 group-hover:text-white">
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="font-medium text-gray-900">Attendance Reports</h3>
-              <p className="mt-1 text-sm text-gray-500">Monitor attendance patterns</p>
-            </div>
-          </div>
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-purple-600 to-pink-600 transition-transform duration-200 group-hover:scale-100" style={{ transform: 'scaleX(0)', transformOrigin: 'left' }} />
-        </div>
+          );
+        })}
       </div>
 
-      <div className="rounded-xl border bg-white shadow-sm">
-        <div className="border-b border-gray-200 px-6 py-4">
-          <h2 className="font-semibold text-gray-900">Recent Reports</h2>
-        </div>
-        <div className="p-6">
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-50">
-              <svg className="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <h3 className="mt-4 text-lg font-medium text-gray-900">No reports generated yet</h3>
-            <p className="mt-2 text-sm text-gray-500">Select a report type above to generate your first report.</p>
-          </div>
-        </div>
+      {/* Assigned Targets Table */}
+      <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-200">
+        <table className="min-w-full border-collapse border border-gray-300">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="border border-gray-300 px-4 py-2 text-left font-semibold">Employee</th>
+              <th className="border border-gray-300 px-4 py-2 text-left font-semibold">Target Description</th>
+              <th className="border border-gray-300 px-4 py-2 text-left font-semibold">Timeline</th>
+              <th className="border border-gray-300 px-4 py-2 text-center font-semibold">Status</th>
+              <th className="border border-gray-300 px-4 py-2 text-center font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td className="text-center py-12" colSpan={5}>
+                  Loading...
+                </td>
+              </tr>
+            ) : assignedTargets.length === 0 ? (
+              <tr>
+                <td className="text-center py-12 text-gray-500" colSpan={5}>
+                  No targets assigned yet.
+                </td>
+              </tr>
+            ) : (
+              assignedTargets.map((assigned) => (
+                <tr key={assigned.id} className="hover:bg-gray-50">
+                  <td className="border border-gray-300 px-4 py-2">
+                    <div className="font-medium text-gray-900">{getEmployeeName(assigned)}</div>
+                    {assigned.user?.email && (
+                      <div className="text-sm text-gray-500">{assigned.user.email}</div>
+                    )}
+                  </td>
+                  <td className="border border-gray-300 px-4 py-2 max-w-md overflow-hidden text-ellipsis whitespace-nowrap">
+                    {getTargetDescription(assigned)}
+                  </td>
+                  <td className="border border-gray-300 px-4 py-2 text-sm text-gray-600">
+                    {new Date(assigned.startdate).toLocaleDateString()} - {new Date(assigned.enddate).toLocaleDateString()}
+                  </td>
+                  <td className="border border-gray-300 px-4 py-2 text-center">
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                        assigned.status === "Completed"
+                          ? "bg-green-100 text-green-800 border-green-200"
+                          : assigned.status === "In Progress"
+                          ? "bg-blue-100 text-blue-800 border-blue-200"
+                          : assigned.status === "Assigned"
+                          ? "bg-purple-100 text-purple-800 border-purple-200"
+                          : "bg-red-100 text-red-800 border-red-200"
+                      }`}
+                    >
+                      {assigned.status}
+                    </span>
+                  </td>
+                  <td className="border border-gray-300 px-4 py-2 text-center">
+                    <button
+                      className="text-indigo-600 hover:text-indigo-900 underline"
+                      onClick={() => handleView(assigned)}
+                    >
+                      View
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
+
+      {/* View Target Progress Modal */}
+      <Dialog open={viewOpen} onClose={() => setViewOpen(false)} title="Assigned Target Details">
+        {viewTarget ? (
+          <>
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-500">Employee</p>
+                <p className="font-medium text-gray-900">{getEmployeeName(viewTarget)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Assigned By</p>
+                <p className="font-medium text-gray-900">{viewTarget.assigner ? `${viewTarget.assigner.fname} ${viewTarget.assigner.lname}` : "Unknown"}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Target</p>
+                <p className="font-medium text-gray-900">{getTargetDescription(viewTarget)}</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Start Date</p>
+                  <p className="font-medium text-gray-900">{new Date(viewTarget.startdate).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">End Date</p>
+                  <p className="font-medium text-gray-900">{new Date(viewTarget.enddate).toLocaleDateString()}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Status</p>
+                <p className="font-medium text-gray-900">{viewTarget.status}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Remarks</p>
+                <p className="font-medium text-gray-900">{viewTarget.remarks || "-"}</p>
+              </div>
+
+              {/* Plan Progress Table */}
+              <div>
+                <p className="text-sm font-medium text-gray-500 mb-2">
+                  Plan Progress <br />
+                  <span className="text-xs text-gray-400">
+                    Only verified submissions between assigned dates are counted.
+                  </span>
+                </p>
+                {planProgress.length > 0 ? (
+                  <table className="min-w-full border rounded-lg text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold border">Plan</th>
+                        <th className="px-3 py-2 text-center font-semibold border">Target</th>
+                        <th className="px-3 py-2 text-center font-semibold border">Verified</th>
+                        <th className="px-3 py-2 text-center font-semibold border">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {planProgress.map((row) => (
+                        <tr key={row.planId} className="border-t">
+                          <td className="px-3 py-2">{row.planName}</td>
+                          <td className="px-3 py-2 text-center">{row.target}</td>
+                          <td className="px-3 py-2 text-center">{row.verified}</td>
+                          <td className="px-3 py-2 text-center">
+                            <span
+                              className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${
+                                row.status === "Completed"
+                                  ? "bg-green-100 text-green-800"
+                                  : row.status === "In Progress"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-gray-100 text-gray-800"
+                              }`}
+                            >
+                              {row.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="text-gray-500 text-sm mt-1">No plan targets configured or no verified submissions for this period.</p>
+                )}
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <Button onClick={() => setViewOpen(false)}>Close</Button>
+            </div>
+          </>
+        ) : (
+          <div className="text-center text-gray-500 py-12">No details to show</div>
+        )}
+      </Dialog>
     </section>
-  )
+  );
 }
-
-
