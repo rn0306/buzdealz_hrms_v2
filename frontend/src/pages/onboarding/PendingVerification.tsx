@@ -1,513 +1,534 @@
-import { useEffect, useMemo, useState } from 'react'
-import { api } from '../../lib/api'
-import { toast } from 'sonner'
-import Button from '../../components/ui/Button'
-import Dialog from '../../components/ui/Dialog'
-import Input from '../../components/ui/Input'
-import { Table, THead, TBody, TR, TH, TD } from '../../components/ui/Table'
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../../lib/api";
+import { toast } from "sonner";
+import Button from "../../components/ui/Button";
+import Dialog from "../../components/ui/Dialog";
+import Input from "../../components/ui/Input";
+import { Table, THead, TBody, TR, TH, TD } from "../../components/ui/Table";
 
 type Candidate = {
-  id: string
-  full_name: string
-  email: string
-  phone?: string
-  source?: string
-  current_stage?: string
-  fname?: string
+  id: string;
+  full_name: string;
+  email: string;
+  phone?: string;
+  source?: string;
+  current_stage?: string;
+  fname?: string;
   personalDetails?: {
-    fullName?: string
-    email?: string
-    phone?: string
-  }
+    fullName?: string;
+    email?: string;
+    phone?: string;
+  };
   adharCardDetails?: {
-    adharNumber?: string
-    adharName?: string
-  }
+    adharNumber?: string;
+    adharName?: string;
+  };
   bankDetails?: {
-    bankName?: string
-    accountNumber?: string
-    ifscCode?: string
-  }
+    bankName?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+  };
   educationDetails?: {
-    highestQualification?: string
-    university?: string
-    passingYear?: string
-  }
+    highestQualification?: string;
+    university?: string;
+    passingYear?: string;
+  };
   previousExperience?: {
-    companyName?: string
-    role?: string
-    duration?: string
-  }
-  otherDocuments?: string
-  joiningDate?: string | null
-  confirmationDate?: string | null
-  verificationStatus?: 'Pending' | 'VERIFIED' | 'REJECTED'
-  rejectComment?: string
-}
+    companyName?: string;
+    role?: string;
+    duration?: string;
+  };
+  otherDocuments?: string;
+  joiningDate?: string | null;
+  confirmationDate?: string | null;
+  verificationStatus?: "Pending" | "VERIFIED" | "REJECTED";
+  rejectComment?: string;
+
+  // Internship fields (may come from PersonalDetail / user)
+  work_type?: string;
+  internship_duration_months?: number | null;
+  internship_duration_days?: number | null;
+  stipend?: number | null;
+};
 
 type EmailTemplate = {
-  id: string
-  name: string
-  subject: string
-  body_html: string
+  id: string;
+  name: string;
+  subject: string;
+  body_html: string;
+};
+
+// Helper: format Date -> yyyy-MM-dd
+function formatDateYMD(d: Date) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
-type DocumentTemplate = {
-  id: string
-  name: string
-  body_html: string
-  category: string
+// Helper: calculate internship end date from joining date + months/days
+function calculateInternshipEndDate(
+  joiningDateStr?: string,
+  monthsStr?: string,
+  daysStr?: string
+): string {
+  if (!joiningDateStr) return "";
+  try {
+    const joining = new Date(joiningDateStr);
+    if (isNaN(joining.getTime())) return "";
+
+    const months = monthsStr && monthsStr.trim() !== "" ? Number(monthsStr) : 0;
+    const days = daysStr && daysStr.trim() !== "" ? Number(daysStr) : 0;
+
+    const end = new Date(joining);
+    if (months > 0) end.setMonth(end.getMonth() + months);
+    if (days > 0) end.setDate(end.getDate() + days);
+
+    return formatDateYMD(end);
+  } catch {
+    return "";
+  }
 }
 
 export default function PendingVerification() {
-  const [rows, setRows] = useState<Candidate[]>([])
-  const [loading, setLoading] = useState(false)
-  const [openViewId, setOpenViewId] = useState<string | null>(null)
-  const [rejectComment, setRejectComment] = useState('')
-  const [joiningDate, setJoiningDate] = useState('')
-  const [confirmationDate, setConfirmationDate] = useState('')
-  const [query, setQuery] = useState('')
+  const [rows, setRows] = useState<Candidate[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [openViewId, setOpenViewId] = useState<string | null>(null);
+  const [rejectComment, setRejectComment] = useState("");
+  const [joiningDate, setJoiningDate] = useState("");
+  const [confirmationDate, setConfirmationDate] = useState("");
+  const [query, setQuery] = useState("");
 
-  const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
-  const [action, setAction] = useState<'VERIFIED' | 'REJECTED' | null>(null)
+  const [selectedCandidate, setSelectedCandidate] =
+    useState<Candidate | null>(null);
+  const [action, setAction] =
+    useState<"VERIFIED" | "REJECTED" | null>(null);
 
-  // ✉️ Mail Dialog States
-  const [openMailDialog, setOpenMailDialog] = useState(false)
-  const [mailCandidate, setMailCandidate] = useState<Candidate | null>(null)
-  const [templates, setTemplates] = useState<EmailTemplate[]>([])
-  const [selectedTemplateId, setSelectedTemplateId] = useState('')
-  const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null)
-  const [sendingMail, setSendingMail] = useState(false)
+  // Internship editable states
+  const [internWorkType, setInternWorkType] = useState("");
+  const [internMonths, setInternMonths] = useState("");
+  const [internDays, setInternDays] = useState("");
+  const [internStipend, setInternStipend] = useState("");
 
-  // 📄 Document Template States (Offer Letter)
-  const [docTemplates, setDocTemplates] = useState<DocumentTemplate[]>([])
-  const [selectedDocTemplateId, setSelectedDocTemplateId] = useState('')
-  const [selectedDocTemplate, setSelectedDocTemplate] = useState<DocumentTemplate | null>(null)
-  const [generatingOffer, setGeneratingOffer] = useState(false)
-  const [offerPdfUrl, setOfferPdfUrl] = useState<string | null>(null)
+  // ✉ Mail dialog states
+  const [openMailDialog, setOpenMailDialog] = useState(false);
+  const [mailCandidate, setMailCandidate] = useState<Candidate | null>(null);
+  const [sendingMail, setSendingMail] = useState(false);
 
+  const [openOfferDialog, setOpenOfferDialog] = useState(false);
+  const [offerUrl, setOfferUrl] = useState<string | null>(null);
+  const [loadingOffer, setLoadingOffer] = useState(false);
+
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
+  const [selectedEmailTemplateId, setSelectedEmailTemplateId] =
+    useState<string | null>(null);
+  const [selectedEmailTemplate, setSelectedEmailTemplate] =
+    useState<EmailTemplate | null>(null);
+
+  const [attachOffer, setAttachOffer] = useState(true);
+
+  // Filter results
   const filtered = useMemo(() => {
-    const q = query.toLowerCase()
+    const q = query.toLowerCase();
     return rows.filter((r) =>
-      [r.full_name, r.email, r.phone, r.source, r.verificationStatus].some((v) =>
-        (v || '').toString().toLowerCase().includes(q)
+      [r.full_name, r.email, r.phone, r.source, r.verificationStatus].some(
+        (v) => (v || "").toString().toLowerCase().includes(q)
       )
-    )
-  }, [rows, query])
+    );
+  }, [rows, query]);
 
+  // Fetch candidates
   async function fetchRows() {
-    setLoading(true)
-    setQuery('') // Clear the search input
+    setLoading(true);
     try {
-      const res = await api.get('/api/personaldetails/filled')
-
+      const res = await api.get("/api/personaldetails/filled");
       const normalizeVerification = (v: any) => {
-        if (v === undefined || v === null) return undefined
-        const s = String(v).trim()
-        if (!s) return undefined
-        const up = s.toUpperCase()
-        if (up.includes('VERIFIED')) return 'VERIFIED'
-        if (up.includes('REJECT')) return 'REJECTED'
-        if (up.includes('PEND')) return 'Pending'
-        return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
-      }
+        if (!v) return undefined;
+        const s = String(v).trim().toUpperCase();
+        if (s.includes("VERIFIED")) return "VERIFIED";
+        if (s.includes("REJECT")) return "REJECTED";
+        if (s.includes("PEND")) return "Pending";
+        return v;
+      };
 
       const normalized = (res.data || []).map((r: any) => {
-        const user = r.user || {}
-
+        const user = r.user || {};
         return {
           id: user.id || r.user_id,
-          full_name: `${user.fname || ''} ${user.mname || ''} ${user.lname || ''}`.trim() || '-',
-          fname: user.fname || '',
-          email: user.email || '-',
-          phone: user.phone || '-',
+          full_name:
+            `${user.fname || ""} ${user.mname || ""} ${user.lname || ""}`.trim() ||
+            "-",
+          fname: user.fname || "",
+          email: user.email || "-",
+          phone: user.phone || "-",
           source: r.source,
           verificationStatus: normalizeVerification(r.verification_status),
           joiningDate: user.joining_date || r.joining_date || null,
           confirmationDate: user.confirmation_date || r.confirmation_date || null,
           personalDetails: {
-            fullName: `${user.fname || ''} ${user.mname || ''} ${user.lname || ''}`.trim() || '-',
-            email: user.email || '-',
-            phone: user.phone || '-',
+            fullName:
+              `${user.fname || ""} ${user.mname || ""} ${user.lname || ""}`.trim() ||
+              "-",
+            email: user.email || "-",
+            phone: user.phone || "-",
           },
           adharCardDetails: {
-            adharNumber: r.adhar_card_no || '-',
-            adharName: user.fname || '-',
+            adharNumber: r.adhar_card_no || "-",
+            adharName: user.fname || "-",
           },
           bankDetails: {
-            bankName: r.bank_name || '-',
-            accountNumber: r.account_no || '-',
-            ifscCode: r.ifsc_code || '-',
+            bankName: r.bank_name || "-",
+            accountNumber: r.account_no || "-",
+            ifscCode: r.ifsc_code || "-",
           },
           educationDetails: {
-            highestQualification: r.highest_education || '-',
-            university: r.university_name || '-',
-            passingYear: r.passing_year || '-',
+            highestQualification: r.highest_education || "-",
+            university: r.university_name || "-",
+            passingYear: r.passing_year || "-",
           },
           previousExperience: {
-            companyName: r.last_company_name || '-',
-            role: r.role_designation || '-',
-            duration: r.duration || '-',
+            companyName: r.last_company_name || "-",
+            role: r.role_designation || "-",
+            duration: r.duration || "-",
           },
-          otherDocuments: r.other_documents_url || '-',
-        } as Candidate
-      })
+          otherDocuments: r.other_documents_url || "-",
 
-      setRows(normalized)
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Failed to load candidates')
+          // internship fields from backend (if present on personal detail / user)
+          work_type: r.work_type || "",
+          internship_duration_months:
+            r.internship_duration_months !== undefined
+              ? Number(r.internship_duration_months)
+              : null,
+          internship_duration_days:
+            r.internship_duration_days !== undefined
+              ? Number(r.internship_duration_days)
+              : null,
+          stipend:
+            r.stipend !== undefined && r.stipend !== null
+              ? Number(r.stipend)
+              : null,
+        } as Candidate;
+      });
+
+      setRows(normalized);
+    } catch (err) {
+      toast.error("Failed to load candidates");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    fetchRows()
-  }, [])
+    fetchRows();
+  }, []);
 
+  // Format dates
   function formatToDateTimeLocal(d?: string | null) {
-    if (!d) return ''
+    if (!d) return "";
     try {
-      if (d.includes('T')) return d.slice(0, 16)
-      if (d.length === 10) return `${d}T00:00`
-      return new Date(d).toISOString().slice(0, 16)
+      if (d.includes("T")) return d.slice(0, 16);
+      if (d.length === 10) return `${d}T00:00`;
+      return new Date(d).toISOString().slice(0, 16);
     } catch {
-      return ''
+      return "";
     }
   }
 
+  // View candidate details
   function openView(candidate: Candidate) {
-    setSelectedCandidate(candidate)
-    setRejectComment(candidate.rejectComment || '')
-    setJoiningDate(candidate.joiningDate ? String(candidate.joiningDate).slice(0, 10) : '')
-    setConfirmationDate(formatToDateTimeLocal(candidate.confirmationDate || null))
-    setOpenViewId(candidate.id)
-    setAction(null)
+    setSelectedCandidate(candidate);
+    setRejectComment(candidate.rejectComment || "");
+
+    setJoiningDate(
+      candidate.joiningDate ? String(candidate.joiningDate).slice(0, 10) : ""
+    );
+    setConfirmationDate(
+      formatToDateTimeLocal(candidate.confirmationDate || null)
+    );
+    setOpenViewId(candidate.id);
+    setAction(null);
+
+    // internship local state
+    setInternWorkType(candidate.work_type || "");
+    setInternMonths(
+      candidate.internship_duration_months != null
+        ? String(candidate.internship_duration_months)
+        : ""
+    );
+    setInternDays(
+      candidate.internship_duration_days != null
+        ? String(candidate.internship_duration_days)
+        : ""
+    );
+    setInternStipend(
+      candidate.stipend != null ? String(candidate.stipend) : ""
+    );
   }
 
   function closeView() {
-    setOpenViewId(null)
-    setSelectedCandidate(null)
-    setRejectComment('')
-    setJoiningDate('')
-    setConfirmationDate('')
-    setAction(null)
+    setOpenViewId(null);
+    setSelectedCandidate(null);
+    setRejectComment("");
+    setJoiningDate("");
+    setConfirmationDate("");
+    setAction(null);
+    setInternWorkType("");
+    setInternMonths("");
+    setInternDays("");
+    setInternStipend("");
   }
 
+  // Save candidate verification
   async function handleSave() {
-    if (!selectedCandidate) return
+    if (!selectedCandidate) return;
 
-    if (action === 'REJECTED' && rejectComment.trim() === '') {
-      toast.error('Please provide a reason for rejection')
-      return
+    if (!action) {
+      toast.error("Please select an action (Verify / Reject)");
+      return;
     }
 
-    if (action === 'VERIFIED' && !joiningDate) {
-      toast.error('Please select joining date')
-      return
+    const monthsNum =
+      internMonths && internMonths.trim() !== ""
+        ? Number(internMonths)
+        : undefined;
+    const daysNum =
+      internDays && internDays.trim() !== ""
+        ? Number(internDays)
+        : undefined;
+    const stipendNum =
+      internStipend && internStipend.trim() !== ""
+        ? Number(internStipend)
+        : undefined;
+    const internshipEndDate = calculateInternshipEndDate(
+      joiningDate,
+      internMonths,
+      internDays
+    );
+
+    if (action === "REJECTED" && rejectComment.trim() === "") {
+      toast.error("Please enter rejection reason");
+      return;
+    }
+
+    if (action === "VERIFIED") {
+      if (!joiningDate) {
+        toast.error("Please select joining date");
+        return;
+      }
+      if (!internWorkType.trim()) {
+        toast.error("Please enter Work Type");
+        return;
+      }
+      if (!stipendNum || stipendNum <= 0) {
+        toast.error("Please enter stipend");
+        return;
+      }
     }
 
     try {
-      const confirmationToSend = action === 'VERIFIED'
-        ? (confirmationDate && confirmationDate.includes('T') ? new Date(confirmationDate).toISOString() : new Date().toISOString())
-        : null
+      let confirmationToSend: string | null = null;
 
-      await api.post(`/api/onboarding/verify-and-update/${selectedCandidate.id}`, {
-        verificationStatus: action === 'VERIFIED' ? 'VERIFIED' : 'REJECTED',
-        rejectComment: action === 'REJECTED' ? rejectComment.trim() : '',
-        joiningDate: action === 'VERIFIED' ? joiningDate : null,
-        confirmationDate: confirmationToSend,
-      })
-
-      const updatedCandidate: Candidate = {
-        ...selectedCandidate,
-        verificationStatus: (action === 'VERIFIED' ? 'VERIFIED' : 'REJECTED') as 'VERIFIED' | 'REJECTED' | 'PENDING',
-        rejectComment: action === 'REJECTED' ? rejectComment.trim() : '',
-        joiningDate: action === 'VERIFIED' ? joiningDate : selectedCandidate.joiningDate,
-        confirmationDate: action === 'VERIFIED' ? formatToDateTimeLocal(confirmationToSend || '') : selectedCandidate.confirmationDate,
+      if (action === "VERIFIED") {
+        if (confirmationDate && confirmationDate.includes("T")) {
+          confirmationToSend = new Date(confirmationDate).toISOString();
+        } else {
+          confirmationToSend = new Date().toISOString();
+        }
       }
 
-      setRows(prevRows => prevRows.map(r => r.id === selectedCandidate.id ? updatedCandidate : r))
+      await api.post(
+        `/api/onboarding/verify-and-update/${selectedCandidate.id}`,
+        {
+          verificationStatus: action,
+          rejectComment: action === "REJECTED" ? rejectComment.trim() : "",
+          joiningDate: action === "VERIFIED" ? joiningDate : null,
+          confirmationDate: confirmationToSend,
 
-      toast.success(`Candidate profile ${action === 'VERIFIED' ? 'VERIFIED' : 'REJECTED'}`)
-      closeView()
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Failed to update verification status')
+          // internship fields
+          work_type: internWorkType || null,
+          internship_duration_months: monthsNum,
+          internship_duration_days: daysNum,
+          stipend: stipendNum,
+          internship_end_date: internshipEndDate || null,
+        }
+      );
+
+      toast.success("Updated successfully");
+      closeView();
+      fetchRows();
+    } catch {
+      toast.error("Failed to update");
     }
   }
 
-  // 📨 Open mail dialog
+  // Open mail dialog
   async function openMail(row: Candidate) {
-    setMailCandidate(row)
-    setOpenMailDialog(true)
-    setSelectedTemplateId('')
-    setSelectedTemplate(null)
-    setSelectedDocTemplateId('')
-    setSelectedDocTemplate(null)
-    setOfferPdfUrl(null)
+    setMailCandidate(row);
+    setOpenMailDialog(true);
 
     try {
-      const res = await api.get('/api/email-templates')
-      setTemplates(res.data.data || [])
-    } catch (err: any) {
-      toast.error('Failed to load email templates')
-    }
-
-    try {
-      const res = await api.get('/api/document-templates')
-      setDocTemplates(res.data.data || [])
-    } catch (err: any) {
-      toast.error('Failed to load document templates')
+      const res = await api.get("/api/email-templates");
+      const templates = res.data?.data || [];
+      setEmailTemplates(templates);
+      setSelectedEmailTemplateId(null);
+      setSelectedEmailTemplate(null);
+    } catch {
+      toast.error("Failed to load email templates");
     }
   }
 
-  // 📨 Handle email template change
-  function handleTemplateChange(id: string) {
-    setSelectedTemplateId(id)
-    const t = templates.find((x) => x.id === id) || null
-    setSelectedTemplate(t)
+  // Handle email template selection
+  function handleEmailTemplateSelect(id: string) {
+    setSelectedEmailTemplateId(id);
+    const temp = emailTemplates.find((t) => t.id === id) || null;
+    setSelectedEmailTemplate(temp);
   }
 
-  // 📄 Handle document template change
-  function handleDocTemplateChange(id: string) {
-    setSelectedDocTemplateId(id)
-    const t = docTemplates.find((x) => x.id === id) || null
-    setSelectedDocTemplate(t)
-    setOfferPdfUrl(null)
-  }
+  // Send email (with or without offer letter)
+  async function sendOfferFromDialog() {
+    if (!mailCandidate) return;
 
-  // 📄 Generate Offer Letter PDF Preview (for iframe only)
-  async function generateOfferPdf() {
-    if (!selectedDocTemplate || !mailCandidate) {
-      toast.error('Please select a document template and candidate')
-      return
-    }
-    setGeneratingOffer(true)
-    setOfferPdfUrl(null)
+    setSendingMail(true);
     try {
-      const res = await api.post(
-        '/api/documents/generate',
-        {
-          template_id: selectedDocTemplate.id,
+      if (attachOffer) {
+        await api.post("/api/documents/send-offer-letter", {
+          user_id: mailCandidate.id,
+          email_template_id: selectedEmailTemplateId,
+          recipient_email: mailCandidate.email,
           data: {
             full_name: mailCandidate.full_name,
             email: mailCandidate.email,
-            phone: mailCandidate.phone || '',
-            joining_date: mailCandidate.joiningDate || '',
-            designation: 'Intern',
+            phone: mailCandidate.phone,
+            designation: "Intern",
+            joining_date: mailCandidate.joiningDate || "",
           },
-        },
-        { responseType: 'blob' }
-      )
-      const url = URL.createObjectURL(res.data)
-      setOfferPdfUrl(url)
-      toast.success('Offer letter preview ready')
-    } catch (err: any) {
-      toast.error('Failed to generate offer letter')
-    } finally {
-      setGeneratingOffer(false)
-    }
-  }
-
-  // 📄 Optionally allow download from preview block (not required for sending)
-  async function downloadOfferPdf() {
-    if (!selectedDocTemplate || !mailCandidate) {
-      toast.error('Please select a document template')
-      return
-    }
-    try {
-      const res = await api.post(
-        '/api/documents/generate',
-        {
-          template_id: selectedDocTemplate.id,
+          attachOfferLetter: true,
+        });
+        toast.success("Offer Letter sent successfully");
+      } else {
+        await api.post("/api/email-templates/send", {
+          template_id: selectedEmailTemplateId,
+          recipient_email: mailCandidate.email,
+          recipient_name: mailCandidate.full_name,
           data: {
             full_name: mailCandidate.full_name,
             email: mailCandidate.email,
-            phone: mailCandidate.phone || '',
-            joining_date: mailCandidate.joiningDate || '',
-            designation: 'Intern',
+            phone: mailCandidate.phone || "",
           },
-        },
-        { responseType: 'blob' }
-      )
-      const url = window.URL.createObjectURL(
-        new Blob([res.data], { type: 'application/pdf' })
-      )
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute(
-        'download',
-        `offer_letter_${(mailCandidate.full_name || 'candidate').replace(/\s+/g, '_')}.pdf`
-      )
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-      toast.success('Offer letter downloaded successfully')
+        });
+        toast.success("Email sent");
+      }
+      setOpenMailDialog(false);
     } catch (err: any) {
-      toast.error('Failed to download offer letter')
-    }
-  }
-
-  // 📨 Send email WITHOUT attachment (normal email template flow)
-  async function sendMailToCandidate() {
-    if (!mailCandidate || !selectedTemplate) {
-      toast.error('Please select an email template')
-      return
-    }
-    setSendingMail(true)
-    try {
-      await api.post('/api/email-templates/send', {
-        template_id: selectedTemplate.id,
-        recipient_email: mailCandidate.email,
-        recipient_name: mailCandidate.full_name,
-        data: {
-          full_name: mailCandidate.full_name,
-          email: mailCandidate.email,
-          phone: mailCandidate.phone || '',
-          password: mailCandidate.fname?.toLocaleLowerCase() + '123$' || '',
-        },
-      })
-
-      toast.success(`Mail sent to ${mailCandidate.full_name}`)
-      setOpenMailDialog(false)
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to send email')
+      toast.error(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          "Failed to send email"
+      );
     } finally {
-      setSendingMail(false)
+      setSendingMail(false);
     }
   }
 
-  // 📨 Send email WITH offer letter PDF (backend handles PDF and attachment)
-  async function sendMailWithOfferLetter() {
-    if (!mailCandidate) {
-      toast.error('Candidate not selected')
-      return
-    }
-    if (!selectedDocTemplate) {
-      toast.error('Please select a document template')
-      return
-    }
+  // Open offer preview
+  async function openOfferLetter(row: Candidate) {
+    setLoadingOffer(true);
+    setOfferUrl(null);
 
-    setSendingMail(true)
     try {
-      await api.post('/api/documents/send', {
-        template_id: selectedDocTemplate.id,
-        recipient_email: mailCandidate.email,
-        // subject: use document template name (Option 1)
-        subject: selectedDocTemplate.name,
-        data: {
-          full_name: mailCandidate.full_name,
-          email: mailCandidate.email,
-          phone: mailCandidate.phone || '',
-          joining_date: mailCandidate.joiningDate || '',
-          designation: 'Intern',
-          password: mailCandidate.fname?.toLocaleLowerCase() + '123$' || '',
-        },
-        // optional linkage to email template to render subject/body via Mustache
-        email_template_id: selectedTemplate?.id,
-      })
+      const res = await api.get(`/api/onboarding/offer/${row.id}`);
+      const url =
+        res.data?.data?.offer_url ||
+        res.data?.data?.offerUrl ||
+        null;
 
-      toast.success(
-        selectedTemplate
-          ? `Mail with offer letter sent using email template "${selectedTemplate.name}"`
-          : 'Mail with offer letter sent'
-      )
-      setOpenMailDialog(false)
-    } catch (err: any) {
-      console.error('Error sending mail with offer letter', err)
-      toast.error(err?.response?.data?.error || err?.response?.data?.message || 'Failed to send email with offer letter')
+      if (!url) {
+        toast.error("Offer letter not generated yet.");
+        setLoadingOffer(false);
+        return;
+      }
+
+      setOfferUrl(url);
+      setOpenOfferDialog(true);
+    } catch (err) {
+      toast.error("Failed to load offer letter");
     } finally {
-      setSendingMail(false)
+      setLoadingOffer(false);
     }
   }
+
+  const internshipEndDatePreview = calculateInternshipEndDate(
+    joiningDate,
+    internMonths,
+    internDays
+  );
 
   return (
-    <section className="max-w-7xl mx-auto p-6 space-y-8 bg-gradient-to-br from-white via-gray-50 to-indigo-50 rounded-2xl shadow-md">
+    <section className="max-w-7xl mx-auto p-6 space-y-8 bg-gray-50 rounded-2xl shadow-md">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-left">
-          <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
-            Pending Verification
-          </span>
+        <h1 className="text-2xl font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+          Pending Verification
         </h1>
-        <div className="flex items-center gap-3 ml-auto">
+
+        <div className="flex items-center gap-3">
           <Input
             placeholder="Search candidates..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="rounded-lg border border-gray-300 px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            className="px-4 py-2 border"
           />
-          <Button
-            variant="outline"
-            onClick={fetchRows}
-            disabled={loading}
-            className="px-4 py-2 rounded-lg border border-gray-300 shadow-sm hover:bg-gray-50"
-          >
-            {loading ? 'Loading...' : 'Refresh'}
+          <Button onClick={fetchRows} disabled={loading}>
+            {loading ? "Loading..." : "Refresh"}
           </Button>
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-lg overflow-auto">
+      {/* TABLE */}
+      <div className="rounded-xl border bg-white p-6 shadow-sm">
         <Table className="min-w-full">
           <THead className="bg-indigo-50">
             <TR>
-              <TH className="px-8 py-3 text-left text-sm font-bold uppercase tracking-wide text-indigo-700">Name</TH>
-              <TH className="px-6 py-3 text-left text-sm font-semibold text-indigo-700">Email</TH>
-              <TH className="px-6 py-3 text-left text-sm font-semibold text-indigo-700">Phone</TH>
-              <TH className="px-6 py-3 text-left text-sm font-semibold text-indigo-700">Status</TH>
-              <TH className="px-6 py-3 text-left text-sm font-semibold text-indigo-700">Actions</TH>
+              <TH>Name</TH>
+              <TH>Email</TH>
+              <TH>Phone</TH>
+              <TH>Status</TH>
+              <TH>Actions</TH>
             </TR>
           </THead>
           <TBody>
-            {filtered.length === 0 && (
-              <TR>
-                <TD colSpan={5} className="text-center py-16 text-gray-500 bg-indigo-50 font-medium">
-                  No candidates awaiting verification.
-                </TD>
-              </TR>
-            )}
             {filtered.map((r) => (
-              <TR key={r.id} className="hover:bg-indigo-100 transition cursor-pointer">
-                <TD className="px-8 py-4 font-semibold">{r.full_name}</TD>
-                <TD className="px-6 py-4">{r.email}</TD>
-                <TD className="px-6 py-4">{r.phone || '-'}</TD>
-                <TD className="px-6 py-4 font-medium">
-                  <span
-                    className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${
-                      r.verificationStatus === 'VERIFIED'
-                        ? 'bg-green-100 text-green-800'
-                        : r.verificationStatus === 'REJECTED'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}
-                  >
-                    {r.verificationStatus || 'Pending'}
-                  </span>
-                </TD>
-                <TD className="px-6 py-4 flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => openView(r)}
-                    className="inline-flex items-center gap-2 rounded-lg border border-indigo-600 px-3 py-1 text-indigo-600 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    aria-label={`View details of ${r.full_name}`}
-                  >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
+              <TR key={r.id}>
+                <TD>{r.full_name}</TD>
+                <TD>{r.email}</TD>
+                <TD>{r.phone || "-"}</TD>
+                <TD>{r.verificationStatus}</TD>
+                <TD className="flex gap-2">
+                  <Button onClick={() => openView(r)} variant="outline">
                     View
                   </Button>
-
+                  <Button onClick={() => openMail(r)} variant="outline">
+                    Send Mail
+                  </Button>
                   <Button
                     variant="outline"
-                    onClick={() => openMail(r)}
-                    className="inline-flex items-center gap-2 rounded-lg border border-blue-600 px-3 py-1 text-blue-600 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    onClick={() => openOfferLetter(r)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-green-600 px-3 py-1 text-green-600 hover:bg-green-100"
                   >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
-                    Send Mail
+                    View Offer
                   </Button>
                 </TD>
               </TR>
@@ -516,196 +537,307 @@ export default function PendingVerification() {
         </Table>
       </div>
 
-      {/* Candidate Details Dialog */}
+      {/* CANDIDATE DETAILS + VERIFY DIALOG */}
       <Dialog
         open={!!openViewId}
         onClose={closeView}
-        title={`Candidate Details - ${selectedCandidate?.full_name || ''}`}
-        className="max-w-6xl w-full rounded-xl p-6 overflow-y-auto max-h-[85vh]"
+        title={`Candidate: ${selectedCandidate?.full_name}`}
+        className="max-w-5xl"
       >
         {selectedCandidate && (
           <form className="space-y-6 max-h-[80vh] overflow-y-auto px-2 sm:px-6 pb-6 text-gray-800">
             {/* Personal Details */}
             <section>
-              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">Personal Details</h2>
+              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">
+                Personal Details
+              </h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                 <Input
                   readOnly
                   placeholder="Full Name"
-                  value={selectedCandidate.personalDetails?.fullName || selectedCandidate.full_name || '-'}
+                  value={
+                    selectedCandidate.personalDetails?.fullName ||
+                    selectedCandidate.full_name ||
+                    "-"
+                  }
                 />
                 <Input
                   readOnly
                   type="email"
                   placeholder="Email"
-                  value={selectedCandidate.personalDetails?.email || selectedCandidate.email || '-'}
+                  value={
+                    selectedCandidate.personalDetails?.email ||
+                    selectedCandidate.email ||
+                    "-"
+                  }
                 />
                 <Input
                   readOnly
                   placeholder="Phone"
-                  value={selectedCandidate.personalDetails?.phone || selectedCandidate.phone || '-'}
+                  value={
+                    selectedCandidate.personalDetails?.phone ||
+                    selectedCandidate.phone ||
+                    "-"
+                  }
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Joining Date</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Joining Date
+                  </label>
                   <input
-                    readOnly
                     type="date"
-                    value={joiningDate || ''}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 bg-gray-50 text-gray-700"
+                    value={joiningDate || ""}
+                    onChange={(e) => setJoiningDate(e.target.value)}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 bg-white text-gray-700"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Confirmation Date</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Confirmation Date
+                  </label>
                   <input
-                    readOnly
                     type="datetime-local"
-                    value={confirmationDate || ''}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 bg-gray-50 text-gray-700"
+                    value={confirmationDate || ""}
+                    onChange={(e) => setConfirmationDate(e.target.value)}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 bg-white text-gray-700"
                   />
                 </div>
                 <Input
                   readOnly
                   placeholder="Current Stage"
-                  value={selectedCandidate.verificationStatus || '-'}
+                  value={selectedCandidate.verificationStatus || "-"}
                 />
               </div>
             </section>
 
             {/* Aadhaar Details */}
             <section>
-              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">Aadhaar Details</h2>
+              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">
+                Aadhaar Details
+              </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
                 <Input
                   readOnly
                   placeholder="Aadhaar Number"
-                  value={selectedCandidate.adharCardDetails?.adharNumber || '-'}
+                  value={
+                    selectedCandidate.adharCardDetails?.adharNumber || "-"
+                  }
                 />
                 <Input
                   readOnly
                   placeholder="Name on Aadhaar"
-                  value={selectedCandidate.adharCardDetails?.adharName || '-'}
+                  value={
+                    selectedCandidate.adharCardDetails?.adharName || "-"
+                  }
                 />
               </div>
             </section>
 
             {/* Bank Details */}
             <section>
-              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">Bank Details</h2>
+              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">
+                Bank Details
+              </h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                 <Input
                   readOnly
                   placeholder="Bank Name"
-                  value={selectedCandidate.bankDetails?.bankName || '-'}
+                  value={selectedCandidate.bankDetails?.bankName || "-"}
                 />
                 <Input
                   readOnly
                   placeholder="Account Number"
-                  value={selectedCandidate.bankDetails?.accountNumber || '-'}
+                  value={
+                    selectedCandidate.bankDetails?.accountNumber || "-"
+                  }
                 />
                 <Input
                   readOnly
                   placeholder="IFSC Code"
-                  value={selectedCandidate.bankDetails?.ifscCode || '-'}
+                  value={selectedCandidate.bankDetails?.ifscCode || "-"}
                 />
               </div>
             </section>
 
             {/* Education Details */}
             <section>
-              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">Education Details</h2>
+              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">
+                Education Details
+              </h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                 <Input
                   readOnly
                   placeholder="Highest Qualification"
-                  value={selectedCandidate.educationDetails?.highestQualification || '-'}
+                  value={
+                    selectedCandidate.educationDetails
+                      ?.highestQualification || "-"
+                  }
                 />
                 <Input
                   readOnly
                   placeholder="University / Board"
-                  value={selectedCandidate.educationDetails?.university || '-'}
+                  value={
+                    selectedCandidate.educationDetails?.university || "-"
+                  }
                 />
                 <Input
                   readOnly
                   placeholder="Passing Year"
-                  value={selectedCandidate.educationDetails?.passingYear || '-'}
+                  value={
+                    selectedCandidate.educationDetails?.passingYear || "-"
+                  }
                 />
               </div>
             </section>
 
             {/* Experience Details */}
             <section>
-              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">Experience Details</h2>
+              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">
+                Experience Details
+              </h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                 <Input
                   readOnly
                   placeholder="Company Name"
-                  value={selectedCandidate.previousExperience?.companyName || '-'}
+                  value={
+                    selectedCandidate.previousExperience?.companyName ||
+                    "-"
+                  }
                 />
                 <Input
                   readOnly
                   placeholder="Role / Designation"
-                  value={selectedCandidate.previousExperience?.role || '-'}
+                  value={
+                    selectedCandidate.previousExperience?.role || "-"
+                  }
                 />
                 <Input
                   readOnly
                   placeholder="Duration"
-                  value={selectedCandidate.previousExperience?.duration || '-'}
+                  value={
+                    selectedCandidate.previousExperience?.duration || "-"
+                  }
                 />
               </div>
             </section>
 
             {/* Other Documents */}
             <section>
-              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">Other Documents</h2>
+              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">
+                Other Documents
+              </h2>
               <textarea
                 readOnly
                 rows={5}
                 placeholder="Other document details or URLs"
-                value={selectedCandidate.otherDocuments || '-'}
+                value={selectedCandidate.otherDocuments || "-"}
                 className="w-full rounded-md border border-gray-300 px-4 py-3 mt-4 resize-y bg-gray-50 text-gray-700 focus:outline-none"
               />
             </section>
 
+            {/* Internship Details (ALWAYS VISIBLE + EDITABLE) */}
+            <section>
+              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">
+                Internship Details
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                <Input
+                  label="Work Type"
+                  placeholder="e.g., acquiring subscribers"
+                  value={internWorkType}
+                  onChange={(e) => setInternWorkType(e.target.value)}
+                />
+                <Input
+                  label="Stipend (₹)"
+                  type="number"
+                  placeholder="Enter stipend amount"
+                  value={internStipend}
+                  onChange={(e) => setInternStipend(e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+                <Input
+                  label="Duration (Months)"
+                  type="number"
+                  placeholder="Months"
+                  value={internMonths}
+                  onChange={(e) => setInternMonths(e.target.value)}
+                />
+                <Input
+                  label="Duration (Days)"
+                  type="number"
+                  placeholder="Days"
+                  value={internDays}
+                  onChange={(e) => setInternDays(e.target.value)}
+                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Calculated End Date
+                  </label>
+                  <div className="w-full rounded-md border border-gray-300 px-4 py-3 bg-gray-100 text-gray-700">
+                    {internshipEndDatePreview || "Set joining date and duration"}
+                  </div>
+                </div>
+              </div>
+            </section>
+
             {/* Verification Section */}
             <section>
-              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">Verification Status</h2>
+              <h2 className="text-lg font-semibold text-indigo-700 border-b pb-1">
+                Verification Status
+              </h2>
               <div className="flex items-center gap-3 mt-4">
                 <span
                   className={`inline-block rounded-full px-4 py-1 text-sm font-semibold ${
-                    selectedCandidate.verificationStatus === 'VERIFIED'
-                      ? 'bg-green-200 text-green-800'
-                      : selectedCandidate.verificationStatus === 'REJECTED'
-                      ? 'bg-red-200 text-red-800'
-                      : 'bg-yellow-200 text-yellow-800'
+                    selectedCandidate.verificationStatus === "VERIFIED"
+                      ? "bg-green-200 text-green-800"
+                      : selectedCandidate.verificationStatus === "REJECTED"
+                      ? "bg-red-200 text-red-800"
+                      : "bg-yellow-200 text-yellow-800"
                   }`}
                 >
-                  {selectedCandidate.verificationStatus || 'Pending'}
+                  {selectedCandidate.verificationStatus || "Pending"}
                 </span>
               </div>
-              {selectedCandidate.verificationStatus === 'REJECTED' && (
-                <p className="mt-3 p-3 rounded-lg bg-red-100 text-red-700 whitespace-pre-wrap font-semibold">
-                  Reject Comment: {selectedCandidate.rejectComment || '-'}
-                </p>
-              )}
+              {selectedCandidate.verificationStatus === "REJECTED" &&
+                selectedCandidate.rejectComment && (
+                  <p className="mt-3 p-3 rounded-lg bg-red-100 text-red-700 whitespace-pre-wrap font-semibold">
+                    Reject Comment: {selectedCandidate.rejectComment || "-"}
+                  </p>
+                )}
             </section>
 
             {/* Admin Action Section */}
             <section className="pt-6 border-t">
-              <h2 className="text-lg font-semibold text-indigo-700 mb-4">Admin Action</h2>
+              <h2 className="text-lg font-semibold text-indigo-700 mb-4">
+                Admin Action
+              </h2>
 
               <div className="mb-5">
-                <label className="block mb-2 text-sm font-medium text-indigo-700">Action</label>
+                <label className="block mb-2 text-sm font-medium text-indigo-700">
+                  Action
+                </label>
                 <select
-                  value={action || ''}
+                  value={action || ""}
                   onChange={(e) => {
-                    const v = e.target.value as 'VERIFIED' | 'REJECTED' | ''
-                    setAction(v || null)
-                    if (v === 'VERIFIED') {
-                      if (!joiningDate) setJoiningDate(new Date().toISOString().slice(0, 10))
-                      setConfirmationDate(new Date().toISOString().slice(0, 16))
+                    const v = e.target.value as
+                      | "VERIFIED"
+                      | "REJECTED"
+                      | "";
+                    setAction(v || null);
+                    if (v === "VERIFIED") {
+                      if (!joiningDate)
+                        setJoiningDate(
+                          new Date().toISOString().slice(0, 10)
+                        );
+                      if (!confirmationDate)
+                        setConfirmationDate(
+                          new Date().toISOString().slice(0, 16)
+                        );
                     }
                   }}
                   className="block w-full rounded-md border border-indigo-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:border-indigo-600"
@@ -716,32 +848,11 @@ export default function PendingVerification() {
                 </select>
               </div>
 
-              {action === 'VERIFIED' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                  <div>
-                    <label className="block mb-1 font-semibold text-indigo-700">Joining Date</label>
-                    <input
-                      type="date"
-                      value={joiningDate}
-                      onChange={(e) => setJoiningDate(e.target.value)}
-                      className="w-full rounded-md border border-indigo-300 px-4 py-3 text-lg focus:ring-2 focus:ring-indigo-400 focus:border-indigo-600"
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-1 font-semibold text-indigo-700">Confirmation Date</label>
-                    <input
-                      type="datetime-local"
-                      readOnly
-                      value={confirmationDate ? confirmationDate : new Date().toISOString().slice(0, 16)}
-                      className="w-full rounded-md border border-indigo-300 px-4 py-3 text-lg bg-gray-100 text-gray-700"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {action === 'REJECTED' && (
+              {action === "REJECTED" && (
                 <div className="mb-6">
-                  <label className="block mb-2 font-semibold text-indigo-700">Reject Comment</label>
+                  <label className="block mb-2 font-semibold text-indigo-700">
+                    Reject Comment
+                  </label>
                   <textarea
                     rows={4}
                     value={rejectComment}
@@ -763,7 +874,10 @@ export default function PendingVerification() {
                 <Button
                   type="button"
                   onClick={handleSave}
-                  disabled={action === null || (action === 'REJECTED' && rejectComment.trim() === '')}
+                  disabled={
+                    action === null ||
+                    (action === "REJECTED" && rejectComment.trim() === "")
+                  }
                   className="rounded-lg px-6 py-3 font-semibold shadow-lg bg-gradient-to-r from-indigo-600 to-blue-700 text-white hover:from-indigo-700 hover:to-blue-800 transition"
                 >
                   Save
@@ -774,23 +888,23 @@ export default function PendingVerification() {
         )}
       </Dialog>
 
-      {/* 📨 Send Mail Dialog */}
+      {/* SEND MAIL DIALOG */}
       <Dialog
         open={openMailDialog}
         onClose={() => setOpenMailDialog(false)}
-        title={`Send Mail to ${mailCandidate?.full_name || ''}`}
+        title={`Send Mail to ${mailCandidate?.full_name}`}
       >
-        <div className="space-y-4 max-h-[80vh] overflow-y-auto">
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto">
           {/* Email Template Selection */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Select Email Template</label>
+            <label className="font-medium text-sm">Email Template</label>
             <select
-              value={selectedTemplateId}
-              onChange={(e) => handleTemplateChange(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-400"
+              className="w-full border rounded px-3 py-2 mt-1"
+              value={selectedEmailTemplateId || ""}
+              onChange={(e) => handleEmailTemplateSelect(e.target.value)}
             >
               <option value="">-- Select Template --</option>
-              {templates.map((t) => (
+              {emailTemplates.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
                 </option>
@@ -799,126 +913,125 @@ export default function PendingVerification() {
           </div>
 
           {/* Email Template Preview */}
-          {selectedTemplate && (
-            <div className="p-3 border rounded-md bg-gray-50">
-              <h3 className="font-semibold text-blue-900 mb-1">Subject:</h3>
-              <p className="text-gray-700 mb-2">
-                {selectedTemplate.subject.replace('{{full_name}}', mailCandidate?.full_name || '')}
+          {selectedEmailTemplate && (
+            <div className="border rounded-md p-4 bg-gray-50">
+              <h3 className="font-semibold text-indigo-700">Subject:</h3>
+              <p className="mb-3">
+                {selectedEmailTemplate.subject
+                  .replace(
+                    "{{full_name}}",
+                    mailCandidate?.full_name || ""
+                  )
+                  .replace(
+                    "{{email}}",
+                    mailCandidate?.email || ""
+                  )}
               </p>
-              <h3 className="font-semibold text-blue-900 mb-1">Body Preview:</h3>
+
+              <h3 className="font-semibold text-indigo-700">
+                Body Preview:
+              </h3>
               <div
-                className="text-sm text-gray-800"
+                className="prose text-sm mt-2"
                 dangerouslySetInnerHTML={{
-                  __html: selectedTemplate.body_html
-                    .replace('{{full_name}}', mailCandidate?.full_name || '')
-                    .replace('{{email}}', mailCandidate?.email || '')
-                    .replace('{{password}}', mailCandidate?.fname?.toLocaleLowerCase() + '123$' || ''),
+                  __html: selectedEmailTemplate.body_html
+                    .replace(
+                      "{{full_name}}",
+                      mailCandidate?.full_name || ""
+                    )
+                    .replace(
+                      "{{email}}",
+                      mailCandidate?.email || ""
+                    )
+                    .replace(
+                      "{{password}}",
+                      (mailCandidate?.fname?.toLowerCase() || "") +
+                        "123$"
+                    ),
                 }}
               />
             </div>
           )}
 
-          {/* Offer Letter Section */}
-          <div className="border-t pt-4">
-            <h3 className="font-semibold text-gray-900 mb-3">📄 Offer Letter (Optional)</h3>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Select Document Template</label>
-              <select
-                value={selectedDocTemplateId}
-                onChange={(e) => handleDocTemplateChange(e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-400"
-              >
-                <option value="">-- None (No Attachment) --</option>
-                {docTemplates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {selectedDocTemplate && (
-              <div className="mt-3">
-                <Button
-                  onClick={generateOfferPdf}
-                  disabled={generatingOffer}
-                  className="w-full bg-indigo-600 text-white rounded-md px-3 py-2"
-                >
-                  {generatingOffer ? 'Generating...' : '👁️ Preview Offer Letter'}
-                </Button>
-              </div>
-            )}
-
-            {offerPdfUrl && (
-              <div className="mt-3">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="text-sm text-blue-700">
-                    ✓ Offer letter preview ready (it will be attached when sending)
-                  </div>
-                  <div className="flex gap-2">
-                    <a
-                      href={offerPdfUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-1 bg-gray-100 rounded text-sm"
-                    >
-                      Open
-                    </a>
-                    <Button
-                      onClick={downloadOfferPdf}
-                      className="bg-green-600 text-white px-3 py-1 rounded text-sm"
-                    >
-                      Download
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        URL.revokeObjectURL(offerPdfUrl)
-                        setOfferPdfUrl(null)
-                      }}
-                      className="bg-red-100 px-3 py-1 rounded text-sm"
-                    >
-                      Close
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="border rounded-md overflow-hidden" style={{ height: 360 }}>
-                  <iframe src={offerPdfUrl} className="w-full h-full" title="Offer Letter Preview" />
-                </div>
-              </div>
-            )}
+          {/* Attach Offer Letter Checkbox */}
+          <div className="flex items-center gap-3 border-t pt-3">
+            <input
+              id="attachOffer"
+              type="checkbox"
+              checked={attachOffer}
+              onChange={(e) => setAttachOffer(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <label htmlFor="attachOffer" className="text-sm">
+              Attach Offer Letter (PDF)
+            </label>
           </div>
 
-          {/* Dialog Actions */}
-          <div className="flex justify-end gap-3 pt-3 border-t">
+          <div className="flex justify-end gap-3 pt-4">
             <Button
               variant="outline"
               onClick={() => setOpenMailDialog(false)}
-              className="rounded-md px-4 py-2 shadow-sm"
             >
               Cancel
             </Button>
+            <Button
+              onClick={sendOfferFromDialog}
+              disabled={sendingMail}
+              className="bg-blue-600 text-white"
+            >
+              {sendingMail
+                ? "Sending..."
+                : attachOffer
+                  ? "Send Offer Letter"
+                  : "Send Email"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
-            {selectedDocTemplate ? (
-              <Button
-                onClick={sendMailWithOfferLetter}
-                disabled={sendingMail}
-                className="rounded-md px-4 py-2 shadow-md bg-blue-600 text-white"
-              >
-                {sendingMail ? 'Sending...' : 'Send with Offer Letter'}
-              </Button>
-            ) : (
-              <Button
-                onClick={sendMailToCandidate}
-                disabled={sendingMail}
-                className="rounded-md px-4 py-2 shadow-md"
-              >
-                {sendingMail ? 'Sending...' : 'Send Mail'}
-              </Button>
-            )}
+      {/* Offer Letter Preview Modal */}
+      <Dialog
+        open={openOfferDialog}
+        onClose={() => setOpenOfferDialog(false)}
+        title="Offer Letter Preview"
+        className="max-w-4xl w-full"
+      >
+        <div className="space-y-4">
+          {loadingOffer && (
+            <p className="text-center text-gray-600 py-4">
+              Loading Offer Letter...
+            </p>
+          )}
+
+          {!loadingOffer && offerUrl && (
+            <div
+              className="border rounded-md overflow-hidden"
+              style={{ height: "75vh" }}
+            >
+              <iframe
+                src={offerUrl}
+                className="w-full h-full"
+                title="Offer Letter PDF"
+              />
+            </div>
+          )}
+
+          {!loadingOffer && !offerUrl && (
+            <p className="text-center text-red-600 font-semibold">
+              Offer Letter not available.
+            </p>
+          )}
+
+          <div className="flex justify-end pt-3">
+            <Button
+              variant="outline"
+              onClick={() => setOpenOfferDialog(false)}
+            >
+              Close
+            </Button>
           </div>
         </div>
       </Dialog>
     </section>
-  )
+  );
 }

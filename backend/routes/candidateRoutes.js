@@ -9,11 +9,9 @@ router.get('/', auth, checkRole('RECRUITER', 'ADMIN', 'MANAGER'), CandidateContr
 // Get single candidate (HR/Recruiter/Admin)
 router.get('/:id', auth, checkRole('RECRUITER', 'ADMIN', 'MANAGER'), CandidateController.get);
 
-// Create user (previously candidate)
-router.post('/', auth, checkRole('RECRUITER', 'ADMIN'), CandidateController.create);
 
 // Update user
-router.put('/:id', auth, checkRole('RECRUITER', 'ADMIN'), CandidateController.update);
+router.put('/:id', auth, checkRole('RECRUITER', 'ADMIN'), CandidateController.updateCandidate);
 
 // Delete user
 router.delete('/:id', auth, checkRole('RECRUITER', 'ADMIN'), CandidateController.remove);

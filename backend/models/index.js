@@ -12,12 +12,13 @@ const Termination = require('./Termination');
 const ActivityLog = require('./ActivityLog');
 const PersonalDetail = require('./PersonalDetail');
 const InternSubscription = require('./InternSubscription');
-const DocumentTemplate = require('./DocumentTemplate');
+const EmailTemplate = require('./EmailTemplate');
 const Plans = require('./Plans');                  
 const TargetsMaster = require('./targets_master'); 
 const EmployeeTarget = require('./employee_targets');
 const EmployeeTargetProgress = require('./employee_target_progress');
 const Notification = require('./Notification');
+const EmailLogs = require('./EmailLogs');
 
 // ======================
 // 🔗 Define Associations
@@ -124,6 +125,17 @@ subscription.hasMany(InternSubscription, {
   as: 'intern_submissions'
 });
 
+User.hasOne(Termination, {
+  foreignKey: 'user_id',
+  as: 'termination'
+});
+
+Termination.belongsTo(User, {
+  foreignKey: 'user_id',
+  as: 'user'
+});
+
+
 // ==========================================
 
 // 🧩 Sync function
@@ -148,8 +160,9 @@ module.exports = {
   Termination,
   ActivityLog,
   PersonalDetail,
-  Plans,                
-  DocumentTemplate,
+  Plans,  
+  EmailTemplate, 
+  EmailLogs,             
   TargetsMaster,
   EmployeeTarget,
   EmployeeTargetProgress,

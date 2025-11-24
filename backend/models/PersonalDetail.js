@@ -119,6 +119,24 @@ const PersonalDetail = sequelize.define(
       allowNull: true,
     },
 
+    // URLs for generated letters
+    offer_letter_url: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    experience_letter_url: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    joining_letter_url: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    confirmation_letter_url: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+
     verified_by: {
       type: DataTypes.UUID,
       allowNull: true,

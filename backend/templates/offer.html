@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Offer Letter</title>
+    <style>
+      body { 
+        font-family: Arial, sans-serif; 
+        color: #111; 
+        padding: 30px; 
+        line-height: 1.6; 
+      }
+      .heading { 
+        text-align: center; 
+        margin-bottom: 30px; 
+      }
+      .heading h1 { 
+        margin: 0; 
+        font-size: 28px; 
+      }
+      .content p { 
+        margin: 10px 0; 
+      }
+    </style>
+  </head>
+  <body>
+    <div class="heading">
+      <h1>Offer Letter</h1>
+    </div>
+
+    <div class="content">
+      <p>Date: {{joining_date}}</p>
+
+      <p>To,</p>
+      <p><strong>{{full_name}}</strong></p>
+      <p>Email: {{email}}</p>
+      <p>Phone: {{phone}}</p>
+
+      <p>Dear {{full_name}},</p>
+
+      <p>
+        We are pleased to offer you an internship position as 
+        <strong>Intern</strong> at <strong>BuzDealz Pvt Ltd</strong>.
+      </p>
+
+      <p>
+        Your internship will begin on <strong>{{joining_date}}</strong> and will be for a duration of 
+        <strong>{{internship_duration_months}} month(s) and {{internship_duration_days}} day(s)</strong>.
+      </p>
+
+      <p>
+        This is a <strong>target-based internship</strong> primarily focused on 
+        <strong>{{work_type}}</strong>. Please note that there are 
+        <strong>no fixed working hours or working days</strong>. You may work flexibly as long as assigned targets are completed.
+      </p>
+
+      <p>
+        You will receive a <strong>monthly stipend</strong> of <strong>₹{{stipend}}</strong>, subject to compliance with internship guidelines.
+      </p>
+
+      <p>
+        Your performance during the internship will determine your eligibility for 
+        <strong>payroll transition</strong>. Transition to payroll is not guaranteed and depends strictly on target achievement and performance.
+      </p>
+
+      <p>
+        Please acknowledge your acceptance of this offer to proceed with onboarding.
+      </p>
+
+      <br />
+
+      <p>Sincerely,</p>
+      <p><strong>{{issuer_name}}</strong></p>
+      <p>HR Team, BuzDealz Pvt Ltd</p>
+    </div>
+  </body>
+</html>

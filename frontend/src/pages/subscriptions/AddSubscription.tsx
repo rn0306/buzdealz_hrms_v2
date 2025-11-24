@@ -157,7 +157,6 @@ export default function AddSubscription() {
 
       setRefreshFlag((p) => p + 1);
     } catch (err) {
-      console.log()
       toast.error((err.response.data.mismatches)? err.response.data.mismatches :"Submit failed");
     }
   };

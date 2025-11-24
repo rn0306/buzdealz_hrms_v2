@@ -7,6 +7,7 @@ const socketIO = require('socket.io');
 require('dotenv').config();
 
 const { sequelize } = require('./models');
+const path = require('path');
 const authRoutes = require('./routes/authRoutes');
 const onboardingRoutes = require('./routes/onboardingRoutes');
 const candidateRoutes = require('./routes/candidateRoutes');
@@ -20,7 +21,7 @@ const internSubscriptionRoutes = require('./routes/internSubscriptionRoutes');
 const plansRoutes = require('./routes/plansRoutes');
 const targetsMasterRoutes = require('./routes/targetsMasterRoutes');
 const employeeTargetsRoutes = require('./routes/employeeTargetsRoutes');
-const documentRoutes = require('./routes/documentRoutes');
+const lettersRoutes = require('./routes/lettersRoutes');
 const activityLogRoutes = require('./routes/activityLogRoutes');
 const notificationsRoutes = require('./routes/notificationsRoutes');
 
@@ -82,6 +83,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/personaldetails', personalDetailsRoutes);
+// Email templates remain mounted (unchanged)
 app.use('/api/email-templates', emailTemplateRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/extensions', extensionRoutes);
@@ -93,7 +95,11 @@ app.use('/api/targets-master', targetsMasterRoutes);
 app.use('/api/employee-targets', employeeTargetsRoutes);
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use('/api', documentRoutes);
+// Serve uploaded files (letters) as static
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Documents routes (new): sending offer letter with optional attachment
+app.use('/api/documents', lettersRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/notifications', notificationsRoutes);
 
@@ -106,8 +112,8 @@ const PORT = process.env.PORT || 5000;
     console.log('✅ Database connected successfully');
 
     // 🧩 Auto update tables without dropping (safe for development)
-    await sequelize.sync({ alter: true });
-    console.log('🔄 Database schema synced (altered to match models)');
+    // await sequelize.sync({ alter: true });
+    // console.log('🔄 Database schema synced (altered to match models)');
 
     server.listen(PORT, () =>
       console.log(`🚀 Server running on http://localhost:${PORT}`)

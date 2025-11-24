@@ -91,8 +91,9 @@ export const sidebarMenus: Record<Role, MenuItem[]> = {
       icon: 'GraduationCap',
       path: '/interns/active'
     },
+    { label: 'Templates', icon: 'FileText', path: '/email-templates' },
     // { label: 'Documents', icon: 'FileText', path: '/documents' },
-    { label: 'Reports', icon: 'PieChart', path: '/reports' },
+    // { label: 'Reports', icon: 'PieChart', path: '/reports' },
     // { label: 'Activities', icon: 'ClipboardCheck', path: '/activities' },
   ],
   manager: [

@@ -2,12 +2,16 @@ const { PersonalDetail, OfferLetter, User, Role } = require('../models');
 const { Op } = require('sequelize');
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
+const { generateLetter } = require('../utils/generateLetter');
+const { sendMail } = require('../utils/emailService');
+const jwt = require('jsonwebtoken');
 
 
 
-async function hashPassword(plainPassword) {
-  return await bcrypt.hash(plainPassword, 12);
+async function generatePasswordFromName(name) {
+  return name.toLowerCase().trim() + '$123';
 }
+
 
 
 function generateOnboardingToken() {
@@ -15,174 +19,168 @@ function generateOnboardingToken() {
 }
 
 class OnboardingController {
-  // 1. HR selects candidate as "Selected" and gets onboarding link
-  static async selectCandidate(req, res) {
-    try {
-      const { candidateId } = req.params;
-      const user = await User.findByPk(candidateId);
-      if (!user) return res.status(404).json({ error: 'Candidate (user) not found' });
 
-      let detail = await PersonalDetail.findOne({ where: { user_id: candidateId } });
-      if (!detail) {
-        detail = await PersonalDetail.create({ user_id: candidateId, current_stage: 'Selected', created_by: req.user.id, updated_by: req.user.id });
-      } else {
-        if (detail.current_stage !== 'New' && detail.current_stage !== 'Shortlisted') {
-          return res.status(400).json({ error: 'Candidate already selected or onboarded' });
-        }
-        detail.current_stage = 'Selected';
-        await detail.save();
-      }
-      // Generate onboarding token
-      const onboardingToken = generateOnboardingToken();
-      // (In real app, send email with link)
-      res.json({
-        message: 'Candidate marked as Selected',
-        onboarding_link: `/api/onboarding/upload/${candidateId}?token=${onboardingToken}`
-      });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
+
+  static async getPresignedResumeUrl(req, res) {
+  try {
+    const { fileType } = req.query;
+
+    if (!fileType) return res.status(400).json({ error: "fileType is required" });
+
+    const { generatePresignedUrl } = require("../utils/s3Presign");
+    const { uploadUrl, fileUrl } = await generatePresignedUrl(fileType);
+
+    res.json({ uploadUrl, fileUrl });
+  } catch (err) {
+    console.error("Presign URL generation error:", err);
+    res.status(500).json({ error: "Failed to generate presigned URL" });
   }
+}
 
-  // Recruiter creates a Candidate and an associated User (auto-generated password)
-  static async createCandidate(req, res) {
-    try {
-      const { full_name, email, phone, resume_url, source, assigned_recruiter, date_of_birth } = req.body;
-      if (!email || !full_name) return res.status(400).json({ error: 'full_name and email are required' });
+ 
+static async createCandidate(req, res) {
+  try {
+    const { full_name, email, phone, resume_url, date_of_birth } = req.body;
 
-      // Make sure there's no existing user with same email
-      const existingUser = await User.findOne({ where: { email } });
-      if (existingUser) return res.status(400).json({ error: 'Candidate with this email already exists' });
+    if (!email || !full_name)
+      return res.status(400).json({ error: "full_name and email are required" });
 
-      // Create user account for candidate with role INTERN
-      const role = await Role.findOne({ where: { code: 'INTERN' } });
-      if (!role) return res.status(500).json({ error: 'INTERN role not found' });
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser)
+      return res.status(400).json({ error: "Candidate with this email already exists" });
 
-      // Generate password using first name
-      const generatedPassword = generatePasswordFromName(full_name);
-      const onboarding_token = generateOnboardingToken(req.user_id);
+    const role = await Role.findOne({ where: { code: "INTERN" } });
+    if (!role) return res.status(500).json({ error: "INTERN role not found" });
 
-      const names = full_name.split(' ');
-      const fname = names[0] || '';
-      const lname = names.slice(1).join(' ') || '';
+    const generatedPassword = await generatePasswordFromName(full_name);
+    const onboarding_token = generateOnboardingToken();
 
-      const user = await User.create({
-        email,
-        password_hash: generatedPassword,
-        role_id: role.id,
-        fname,
-        mname: null,
-        lname,
-        phone: phone || null,
-        date_of_birth,
-        onboarding_token,
-        recruiter_id: assigned_recruiter || req.user.id,
-        created_by: req.user.id,
-        updated_by: req.user.id
-      });
+    const names = full_name.split(" ");
+    const fname = names[0] || "";
+    const lname = names.slice(1).join(" ") || "";
 
-      // Create PersonalDetail record with resume/source
-      const detail = await PersonalDetail.create({
-        user_id: user.id,
-        resume_url: resume_url || null,
-        created_by: req.user.id,
-        updated_by: req.user.id
-      });
+    const user = await User.create({
+      email,
+      password_hash: generatedPassword,
+      role_id: role.id,
+      fname,
+      lname,
+      phone: phone || null,
+      date_of_birth,
+      onboarding_token,
+      recruiter_id: req.user.id,
+      created_by: req.user.id,
+      updated_by: req.user.id,
+    });
 
-      // In production, email this password to the candidate securely. For now, return it in response.
-      res.status(201).json({ message: 'Candidate and user created', candidate: { id: user.id, full_name, email }, user: { id: user.id, email: user.email, tempPassword: generatedPassword } });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
+    await PersonalDetail.create({
+      user_id: user.id,
+      resume_url: resume_url || null,
+      created_by: req.user.id,
+      updated_by: req.user.id,
+    });
+
+    res.status(201).json({
+      message: "Candidate created",
+      candidate: { id: user.id, full_name, email },
+      user: { id: user.id, email: user.email, tempPassword: generatedPassword },
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
+}
 
 
-  // 3. HR verifies documents
-  static async verifyDocuments(req, res) {
-    try {
-      const { candidateId } = req.params;
-      const { status } = req.body; // 'Verified' or 'Rejected'
-      if (!['Verified', 'Rejected'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
-      const user = await User.findByPk(candidateId);
-      if (!user) return res.status(404).json({ error: 'Onboarding user not found' });
-
-      let detail = await PersonalDetail.findOne({ where: { user_id: candidateId } });
-      if (!detail) return res.status(404).json({ error: 'Onboarding details not found' });
-
-      detail.verification_status = status;
-      detail.verified_by = req.user.id;
-      detail.verified_at = new Date();
-      await detail.save();
-
-      // If verified, move to Onboarded and issue offer letter
-      let offerLetter = null;
-      if (status === 'Verified') {
-        detail.current_stage = 'Onboarded';
-        await detail.save();
-        offerLetter = await OfferLetter.create({
-          candidate_id: candidateId,
-          offer_url: `/offers/offer_${candidateId}.pdf`, // Placeholder
-          issued_by: req.user.id
-        });
-      }
-
-      res.json({ message: `Documents ${status.toLowerCase()}.`, offer_letter: offerLetter ? offerLetter.offer_url : undefined });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  }
-
-  // 3b. HR verifies documents and updates candidate details (joining date, confirmation date)
+  // HR verifies documents and updates candidate with joining date and confirmation date
   static async verifyAndUpdateCandidate(req, res) {
     try {
       const { candidateId } = req.params;
-      const { verificationStatus, joiningDate, confirmationDate, rejectComment } = req.body;
-      // Validate inputs
+
+      const {
+        verificationStatus,
+        joiningDate,
+        confirmationDate,
+        rejectComment,
+        work_type,
+        internship_duration_months,
+        internship_duration_days,
+        stipend
+      } = req.body;
+
+      // Validate status
       if (!['VERIFIED', 'REJECTED'].includes(verificationStatus)) {
         return res.status(400).json({ error: 'Invalid verification status' });
       }
 
-      // Find user
+      // Fetch user
       const user = await User.findByPk(candidateId);
       if (!user) return res.status(404).json({ error: 'Candidate (user) not found' });
 
-      // Find personal detail
+      // Fetch personal details
       let detail = await PersonalDetail.findOne({ where: { user_id: candidateId } });
       if (!detail) return res.status(404).json({ error: 'Candidate details not found' });
 
-      // Update verification status
-      detail.verification_status = verificationStatus == 'VERIFIED' ? 'VERIFIED' : 'REJECTED';
+      // Update verification fields
+      detail.verification_status = verificationStatus;
       detail.verified_by = req.user.id;
       detail.verified_at = new Date();
 
-      // Store rejection comment if rejected
+      // Update editable fields
+      if (work_type) detail.work_type = work_type;
+      if (internship_duration_months) detail.internship_duration_months = internship_duration_months;
+      if (internship_duration_days) detail.internship_duration_days = internship_duration_days;
+      if (stipend) detail.stipend = stipend;
+
+      // If rejected, store comment
       if (verificationStatus === 'REJECTED' && rejectComment) {
         detail.rejection_comment = rejectComment;
       }
 
-      // Update user with joining date and confirmation date if accepted
+      // If VERIFIED → update user and generate offer letter
       if (verificationStatus === 'VERIFIED') {
-        if (joiningDate) {
-          user.joining_date = joiningDate;
-        }
-        if (confirmationDate) {
-          user.confirmation_date = confirmationDate;
-        }
+        if (joiningDate) user.joining_date = joiningDate;
+        if (confirmationDate) user.confirmation_date = confirmationDate;
+
         user.updated_by = req.user.id;
         await user.save();
 
-        // Update personal detail stage to Onboarded
-        detail.current_stage = 'Onboarded';
+        // Prepare data for offer letter template
+        const templateData = {
+          full_name: `${user.fname || ''} ${user.lname || ''}`.trim(),
+          email: user.email,
+          phone: user.phone || '',
+          joining_date: user.joining_date || joiningDate,
+          internship_duration_months: detail.internship_duration_months || 0,
+          internship_duration_days: detail.internship_duration_days || 0,
+          work_type: detail.work_type || '',
+          stipend: detail.stipend || 0,
+          issuer_name: req.user && req.user.fname
+            ? `${req.user.fname} ${req.user.lname || ''}`
+            : 'HR Team'
+        };
 
-        // Create offer letter (placeholder URL)
-        // await OfferLetter.create({
-        //   candidate_id: candidateId,
-        //   offer_url: `/offers/offer_${candidateId}.pdf`,
-        //   issued_by: req.user.id
-        // });
-      } else {
-        // If rejected, update stage accordingly
-        detail.current_stage = 'Rejected';
+        try {
+          const { url } = await generateLetter('offer', templateData, {
+            userId: candidateId,
+            sendEmail: true,
+            recipientEmail: user.email,
+            subject: 'Offer Letter',
+            emailBody: `<p>Dear ${templateData.full_name},</p><p>Please find your offer letter attached.</p>`
+          });
+
+          await OfferLetter.create({
+            user_id: candidateId,
+            offer_url: url,
+            issued_by: req.user.id
+          });
+
+          detail.offer_letter_url = url;
+          await detail.save();
+
+        } catch (err) {
+          console.error('Offer letter generation failed:', err);
+        }
       }
 
       detail.updated_by = req.user.id;
@@ -197,35 +195,85 @@ class OnboardingController {
           joining_date: user.joining_date,
           confirmation_date: user.confirmation_date,
           verification_status: detail.verification_status,
-          current_stage: detail.current_stage
+          work_type: detail.work_type,
+          internship_duration_months: detail.internship_duration_months,
+          internship_duration_days: detail.internship_duration_days,
+          stipend: detail.stipend,
+          offer_letter_url: detail.offer_letter_url
         }
       });
 
     } catch (err) {
-
       res.status(500).json({ error: err.message });
     }
   }
 
-  // 4. Candidate accepts offer
-  static async acceptOffer(req, res) {
+  // Authenticated accept (candidate logged in) via POST /api/onboarding/offer-accept/:candidateId
+  static async acceptOfferAuthenticated(req, res) {
     try {
       const { candidateId } = req.params;
-      const { token } = req.query;
-      if (!token) return res.status(401).json({ error: 'Onboarding token required' });
-      let decoded;
-      try {
-        decoded = jwt.verify(token, process.env.JWT_SECRET);
-      } catch {
-        return res.status(401).json({ error: 'Invalid or expired onboarding token' });
-      }
-      if (decoded.candidateId !== candidateId) return res.status(403).json({ error: 'Token does not match candidate' });
-      const offer = await OfferLetter.findOne({ where: { candidate_id: candidateId } });
+      if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+      if (req.user.id !== candidateId) return res.status(403).json({ error: 'Not authorized' });
+
+      const offer = await OfferLetter.findOne({ where: { user_id: candidateId } });
       if (!offer) return res.status(404).json({ error: 'Offer letter not found' });
       offer.accepted = true;
       offer.accepted_at = new Date();
       await offer.save();
+      const detail = await PersonalDetail.findOne({ where: { user_id: candidateId } });
+      if (detail) {
+        detail.verification_status = 'Offer Accepted';
+        await detail.save();
+      }
       res.json({ message: 'Offer accepted. Welcome!' });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  // HR manually trigger sending offer
+  static async sendOffer(req, res) {
+    try {
+      const { candidateId } = req.params;
+      const user = await User.findByPk(candidateId);
+      if (!user) return res.status(404).json({ error: 'Candidate not found' });
+
+      const detail = await PersonalDetail.findOne({ where: { user_id: candidateId } });
+      const templateData = {
+        full_name: `${user.fname || ''} ${user.lname || ''}`.trim(),
+        email: user.email,
+        phone: user.phone || (detail && detail.phone) || '',
+        joining_date: user.joining_date || (detail && detail.joining_date) || new Date().toISOString().split('T')[0],
+        designation: detail && detail.designation,
+        duration: detail && detail.duration,
+        issuer_name: req.user && (req.user.fname ? `${req.user.fname} ${req.user.lname || ''}` : '')
+      };
+
+      const { url } = await generateLetter('offer', templateData, {
+        userId: candidateId,
+        sendEmail: true,
+        recipientEmail: user.email,
+        subject: 'Offer Letter',
+        emailBody: `<p>Dear ${templateData.full_name},</p><p>Please find your offer letter attached.</p>`
+      });
+      const offer = await OfferLetter.create({ user_id: candidateId, offer_url: url, issued_by: req.user.id });
+      try {
+        if (detail) { detail.offer_letter_url = url; await detail.save(); }
+      } catch (e) { console.error('Failed saving offer URL on PersonalDetail', e); }
+      res.json({ success: true, offer: offer });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  // Get latest offer for a candidate
+  static async getOffer(req, res) {
+    try {
+      const { candidateId } = req.params;
+      const offer = await OfferLetter.findOne({ where: { user_id: candidateId }, order: [['issued_at', 'DESC']] });
+      if (!offer) return res.status(404).json({ error: 'Offer not found' });
+      res.json({ success: true, data: offer });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -242,7 +290,7 @@ class OnboardingController {
 
       const user = await User.findByPk(candidateId);
       if (!user) return res.status(404).json({ error: 'Associated user account not found' });
-      const isValid =  token === user.onboarding_token;
+      const isValid = token === user.onboarding_token;
 
 
       if (!isValid) return res.status(403).json({ error: 'Token does not match candidate' });

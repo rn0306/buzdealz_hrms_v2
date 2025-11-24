@@ -3,20 +3,19 @@ const router = express.Router();
 const OnboardingController = require('../controllers/onboardingController');
 const { auth, checkRole } = require('../middleware/authMiddleware');
 
-// HR selects candidate as Selected (HR only)
-router.post('/select/:candidateId', auth, checkRole('RECRUITER', 'ADMIN'), OnboardingController.selectCandidate);
-
+ router.get("/presign-resume", auth, OnboardingController.getPresignedResumeUrl);
 // Recruiter creates candidate + user (HR only)
 router.post('/create-candidate', auth, checkRole('RECRUITER', 'ADMIN'), OnboardingController.createCandidate);
-
-// HR verifies documents (HR only)
-router.post('/verify/:candidateId', auth, checkRole('RECRUITER', 'ADMIN'), OnboardingController.verifyDocuments);
 
 // HR verifies documents and updates candidate with joining date and confirmation date (HR only)
 router.post('/verify-and-update/:candidateId', auth, checkRole('RECRUITER', 'ADMIN'), OnboardingController.verifyAndUpdateCandidate);
 
-// Candidate accepts offer (public, onboarding token)
-router.post('/accept-offer/:candidateId', OnboardingController.acceptOffer);
+router.post('/offer-accept/:candidateId', auth, OnboardingController.acceptOfferAuthenticated);
+
+// HR manually send offer letter
+router.post('/send-offer/:candidateId', auth, checkRole('RECRUITER', 'ADMIN'), OnboardingController.sendOffer);
+// Get latest offer
+router.get('/offer/:candidateId', auth, OnboardingController.getOffer);
 
 // Candidate sets password after onboarding using onboarding token
 router.post('/set-password/:candidateId', OnboardingController.setPassword);

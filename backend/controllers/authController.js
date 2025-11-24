@@ -1,7 +1,8 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Role = require('../models/Role');
-const { PersonalDetail } = require('../models');
+const { PersonalDetail, Termination } = require('../models');
+const { Op } = require("sequelize");
 
 class AuthController {
   
@@ -123,36 +124,58 @@ class AuthController {
 
   // Get all active and verified users for dropdown (employees/candidates)
   static async getActiveVerifiedUsers(req, res) {
-    try {
-      const users = await User.findAll({
-         include: [
-          { model: PersonalDetail, as: 'personalDetail',
-            where: { verification_status: 'VERIFIED' }, attributes: ['verification_status']
-           },
-          {
-            model: Role,
-            as: 'Role',
-            where: { code: 'INTERN' },
-            attributes: ['code']
-          }
-        ],
-        attributes: ['id', 'fname', 'lname', 'email', 'joining_date'],
-        order: [['fname', 'ASC']],
-        raw: true,
-      });
-      // Map to include full name for frontend
-      const mappedUsers = users.map((u) => ({
-        id: u.id,
-        name: `${u.fname} ${u.lname || ''}`.trim(),
-        email: u.email,
-        joining_date: u.joining_date,
-      }));
-      res.json(mappedUsers);
-    } catch (error) {
-      console.error('Get Users Error:', error);
-      res.status(500).json({ error: error.message });
-    }
+  try {
+    const users = await User.findAll({
+      include: [
+        {
+          model: PersonalDetail,
+          as: 'personalDetail',
+          required: true,
+          where: {
+            [Op.or]: [
+              { verification_status: { [Op.iLike]: 'VERIFIED' } },
+              { verification_status: { [Op.iLike]: 'OFFER ACCEPTED' } }
+            ]
+          },
+          attributes: ['verification_status']
+        },
+        {
+          model: Role,
+          as: 'Role',
+          where: { code: 'INTERN' },
+          attributes: ['code']
+        },
+        {
+          model: Termination,
+          as: 'termination',
+          required: false,
+          attributes: ['id']
+        }
+      ],
+
+      // EXCLUDE terminated interns
+      where: {
+        '$termination.id$': null
+      },
+
+      attributes: ['id', 'fname', 'lname', 'email', 'joining_date'],
+      order: [['fname', 'ASC']],
+    });
+
+    const mappedUsers = users.map((u) => ({
+      id: u.id,
+      name: `${u.fname} ${u.lname || ''}`.trim(),
+      email: u.email,
+      joining_date: u.joining_date,
+    }));
+
+    res.json(mappedUsers);
+  } catch (error) {
+    console.error('Get Users Error:', error);
+    res.status(500).json({ error: error.message });
   }
+}
+
 }
 
 module.exports = AuthController;

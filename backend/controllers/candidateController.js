@@ -37,76 +37,44 @@ class CandidateController {
     }
   }
 
-  // Create a new user
-  static async create(req, res) {
-    try {
-      const payload = req.body || {};
+static async updateCandidate(req, res) {
+  try {
+    const { id } = req.params;
+    const { full_name, email, phone, verification_status, date_of_birth, resume_url } = req.body;
 
-      // Accept either `password` or `password_hash` in payload
-      if (payload.password) payload.password_hash = payload.password;
+    const user = await User.findByPk(id);
+    if (!user) return res.status(404).json({ error: "Candidate not found" });
 
-      const allowed = [
-        'email',
-        'password_hash',
-        'role_id',
-        'recruiter_id',
-        'manager_id',
-        'fname',
-        'mname',
-        'lname',
-        'joining_date',
-        'confirmation_date',
-        'date_of_birth',
-        'date_of_departure',
-        'created_by',
-        'updated_by',
-      ];
+    const detail = await PersonalDetail.findOne({ where: { user_id: id } });
+    if (!detail) return res.status(404).json({ error: "Candidate details missing" });
 
-      const data = {};
-      for (const k of allowed) if (payload[k] !== undefined) data[k] = payload[k];
-
-      // basic validation
-      if (!data.email || !data.fname || !data.lname || !data.role_id) {
-        return res.status(400).json({ error: 'email, fname, lname and role_id are required' });
-      }
-
-      const existing = await User.findOne({ where: { email: data.email } });
-      if (existing) return res.status(400).json({ error: 'User with this email already exists' });
-
-      const user = await User.create(data);
-
-      // Return user without password
-      const publicUser = await User.findByPk(user.id, { attributes: { exclude: ['password_hash'] } });
-      res.status(201).json(publicUser);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
+    // If new resume uploaded → delete old from S3
+    if (resume_url && resume_url !== detail.resume_url) {
+      const { deleteFileFromS3 } = require("../utils/s3Presign");
+      await deleteFileFromS3(detail.resume_url);
+      detail.resume_url = resume_url;
     }
+
+    // Update user
+    user.full_name = full_name || user.full_name;
+    user.email = email || user.email;
+    user.phone = phone || user.phone;
+    user.date_of_birth = date_of_birth || user.date_of_birth;
+    user.updated_by = req.user.id;
+    await user.save();
+
+    // Update personal details
+    detail.verification_status = verification_status || detail.verification_status;
+    detail.updated_by = req.user.id;
+    await detail.save();
+
+    res.json({ message: "Candidate updated successfully" });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
+}
 
-  // Update user
-  static async update(req, res) {
-    try {
-      const { id } = req.params;
-      const user = await User.findByPk(id);
-      if (!user) return res.status(404).json({ error: 'User not found' });
-
-      const payload = req.body || {};
-      if (payload.password) payload.password_hash = payload.password;
-
-      let detail = await PersonalDetail.findOne({ where: { user_id: id } });
-       if (!detail) return res.status(404).json({ error: 'detail not found' });
-      Object.assign(detail, payload);
-      await detail.save();
-
-      Object.assign(user, payload);
-      await user.save();
-
-      const publicUser = await User.findByPk(id, { attributes: { exclude: ['password_hash'] } });
-      res.json({ message: 'User updated', user: publicUser });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  }
 
   // Delete user
   static async remove(req, res) {

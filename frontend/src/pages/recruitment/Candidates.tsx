@@ -16,6 +16,7 @@ type Candidate = {
   date_of_birth?: string;
   verification_status?: string;
   onboarding_token?: string;
+  resume_url?: string | null;
 };
 
 type FormState = Partial<Candidate> & { resume_file?: File | null };
@@ -33,16 +34,26 @@ export default function Candidates() {
   const [query, setQuery] = useState("");
   const [openForm, setOpenForm] = useState(false);
   const [editing, setEditing] = useState<Candidate | null>(null);
-  const [form, setForm] = useState<FormState>({ full_name: "", email: "" });
+  const [form, setForm] = useState<FormState>({
+    full_name: "",
+    email: "",
+    phone: "",
+    resume_file: null,
+  });
+
   const [openDeleteId, setOpenDeleteId] = useState<string | null>(null);
 
-  // ✉️ Mail Dialog States
+  // Mail Dialog
   const [openMailDialog, setOpenMailDialog] = useState(false);
   const [mailCandidate, setMailCandidate] = useState<Candidate | null>(null);
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null);
   const [sendingMail, setSendingMail] = useState(false);
+
+  // Resume Preview
+  const [openResumeDialog, setOpenResumeDialog] = useState(false);
+  const [resumePreviewUrl, setResumePreviewUrl] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
@@ -55,15 +66,18 @@ export default function Candidates() {
 
   async function fetchRows() {
     setLoading(true);
-    setQuery(''); // Clear the search input
     try {
       const res = await api.get("/api/candidates");
-      const normalized = (res.data || []).map((r: any) => ({
+      const normalized: Candidate[] = (res.data || []).map((r: any) => ({
         ...r,
         full_name:
-          r.full_name || `${(r.fname || "").trim()} ${(r.lname || "").trim()}`.trim(),
+          r.full_name ||
+          `${(r.fname || "").trim()} ${(r.lname || "").trim()}`.trim(),
+        resume_url: r.resume_url || r.personalDetail?.resume_url || null,
         verification_status:
-          r.verification_status || r.personalDetail?.verification_status || r.verification_status,
+          r.verification_status ||
+          r.personalDetail?.verification_status ||
+          r.verification_status,
       }));
       setRows(normalized);
     } catch (err: any) {
@@ -79,39 +93,98 @@ export default function Candidates() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ full_name: "", email: "", phone: "", resume_file: null });
+    setForm({
+      full_name: "",
+      email: "",
+      phone: "",
+      date_of_birth: "",
+      resume_file: null,
+    });
     setOpenForm(true);
   }
 
   function openEdit(row: Candidate) {
     setEditing(row);
-    setForm({ ...row });
+    setForm({
+      ...row,
+      resume_file: null, // Reset file input
+    });
     setOpenForm(true);
   }
 
+  // Upload Resume → S3
+  async function uploadResumeToS3(file: File): Promise<string> {
+    try {
+      const res = await api.get("/api/onboarding/presign-resume", {
+        params: { fileType: file.type },
+      });
+
+      const { uploadUrl, fileUrl } = res.data;
+
+      await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+
+      return fileUrl;
+    } catch (err) {
+      toast.error("Resume upload failed");
+      throw err;
+    }
+  }
+
+  // Final Form Submit
   async function submitForm(e: React.FormEvent) {
     e.preventDefault();
+
     try {
-      if (editing) {
+      let resumeUrl = form.resume_url || null;
+
+      // If NEW resume uploaded
+      if (form.resume_file) {
+        // PDF check
+        if (form.resume_file.type !== "application/pdf") {
+          toast.error("Only PDF files allowed");
+          return;
+        }
+
+        // Size check
+        if (form.resume_file.size > 2 * 1024 * 1024) {
+          toast.error("File must be under 2MB");
+          return;
+        }
+
+        resumeUrl = await uploadResumeToS3(form.resume_file);
+      }
+
+      if (!editing) {
+        // CREATE
+        const payload = {
+          full_name: form.full_name,
+          email: form.email,
+          phone: form.phone,
+          date_of_birth: form.date_of_birth,
+          resume_url: resumeUrl,
+        };
+
+        await api.post("/api/onboarding/create-candidate", payload);
+        toast.success("Candidate created");
+      } else {
+        // EDIT — Sending new resume URL (delete handled by backend)
         const payload = {
           full_name: form.full_name,
           email: form.email,
           phone: form.phone,
           date_of_birth: form.date_of_birth,
           verification_status: form.verification_status,
+          resume_url: resumeUrl,
         };
+
         await api.put(`/api/candidates/${editing.id}`, payload);
         toast.success("Candidate updated");
-      } else {
-        const payload = {
-          full_name: form.full_name,
-          email: form.email,
-          phone: form.phone,
-          resume_file: form.resume_file,
-        };
-        await api.post("/api/onboarding/create-candidate", payload);
-        toast.success("Candidate created");
       }
+
       setOpenForm(false);
       fetchRows();
     } catch (err: any) {
@@ -125,40 +198,35 @@ export default function Candidates() {
       await api.delete(`/api/candidates/${openDeleteId}`);
       toast.success("Candidate deleted");
       setOpenDeleteId(null);
+      fetchRows();
     } catch (err: any) {
       toast.error(err?.response?.data?.error || "Delete failed");
     }
   }
 
-  const statusOptions = ["PENDING", "Shortlisted", "Rejected", "On Hold"];
-
-  // 📨 Open mail dialog
+  // Mail dialog
   async function openMail(row: Candidate) {
     setMailCandidate(row);
     setOpenMailDialog(true);
-    setSelectedTemplateId("");
-    setSelectedTemplate(null);
     try {
       const res = await api.get("/api/email-templates");
       setTemplates(res.data.data || []);
-    } catch (err: any) {
+    } catch {
       toast.error("Failed to load templates");
     }
   }
 
-  // 📨 Handle template change
   function handleTemplateChange(id: string) {
     setSelectedTemplateId(id);
-    const t = templates.find((x) => x.id === id) || null;
-    setSelectedTemplate(t);
+    setSelectedTemplate(templates.find((x) => x.id === id) || null);
   }
 
-  // 📨 Send mail API call
   async function sendMailToCandidate() {
     if (!mailCandidate || !selectedTemplate) {
       toast.error("Please select a template");
       return;
     }
+
     setSendingMail(true);
     try {
       await api.post("/api/email-templates/send", {
@@ -169,9 +237,9 @@ export default function Candidates() {
           full_name: mailCandidate.full_name,
           email: mailCandidate.email,
           phone: mailCandidate.phone || "",
-          password: mailCandidate.fname?.toLocaleLowerCase() + "123$" || "",
         },
       });
+
       toast.success(`Mail sent to ${mailCandidate.full_name}`);
       setOpenMailDialog(false);
     } catch (err: any) {
@@ -181,223 +249,262 @@ export default function Candidates() {
     }
   }
 
+  // Resume preview
+  function handleViewResume(url?: string | null) {
+    if (!url) {
+      toast.error("No resume available");
+      return;
+    }
+    setResumePreviewUrl(url);
+    setOpenResumeDialog(true);
+  }
+
+  const statusOptions = ["PENDING", "Shortlisted", "Rejected", "On Hold"];
+
   return (
     <div className="p-6 space-y-8">
-      {/* Header */}
+      {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold text-left">
+        <h1 className="text-2xl font-semibold">
           <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
             Recruitment Candidate
           </span>
         </h1>
+
         <div className="flex items-center gap-3 ml-auto">
           <Input
             placeholder="Search candidates..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="rounded-lg border border-gray-300 px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            className="rounded-lg border px-4 py-2"
           />
-          <Button
-            variant="outline"
-            onClick={fetchRows}
-            disabled={loading}
-            className="px-4 py-2 rounded-lg border border-gray-300 shadow-sm hover:bg-gray-50"
-          >
+
+          <Button variant="outline" onClick={fetchRows} disabled={loading}>
             {loading ? "Loading..." : "Refresh"}
           </Button>
-          <Button className="rounded-md w-[100%] py-2 shadow-md" onClick={openCreate}>
-            Add Candidate
-          </Button>
+
+          <Button onClick={openCreate}>Add Candidate</Button>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <THead>
+      {/* TABLE */}
+      <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+        <Table>
+          <THead>
+            <TR>
+              <TH>Name</TH>
+              <TH>Email</TH>
+              <TH>Phone</TH>
+              <TH>DOB</TH>
+              <TH>Status</TH>
+              <TH>Resume</TH>
+              <TH className="text-center">Actions</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {filtered.length === 0 ? (
               <TR>
-                <TH>Name</TH>
-                <TH>Email</TH>
-                <TH>Phone</TH>
-                <TH>Date of Birth</TH>
-                <TH>Verification Status</TH>
-                <TH className="text-center">Actions</TH>
+                <TD colSpan={7} className="py-8 text-center text-gray-500">
+                  No candidates found
+                </TD>
               </TR>
-            </THead>
-            <TBody>
-              {filtered.length === 0 ? (
-                <TR>
-                  <TD colSpan={5} className="py-8 text-center text-gray-500">
-                    No candidates found
+            ) : (
+              filtered.map((r) => (
+                <TR key={r.id}>
+                  <TD>{r.full_name}</TD>
+                  <TD>{r.email}</TD>
+                  <TD>{r.phone || "-"}</TD>
+                  <TD>{r.date_of_birth || "-"}</TD>
+                  <TD>{r.verification_status || "-"}</TD>
+
+                  <TD>
+                    {r.resume_url ? (
+                      <button
+                        className="text-indigo-600 hover:underline"
+                        onClick={() => handleViewResume(r.resume_url)}
+                      >
+                        View Resume
+                      </button>
+                    ) : (
+                      <span className="text-gray-400 text-sm">No Resume</span>
+                    )}
+                  </TD>
+
+                  <TD>
+                    <div className="flex justify-center gap-2">
+                      <button onClick={() => openEdit(r)}>✏️</button>
+                      <button onClick={() => setOpenDeleteId(r.id)}>🗑️</button>
+                      <button onClick={() => openMail(r)}>✉️</button>
+                    </div>
                   </TD>
                 </TR>
-              ) : (
-                filtered.map((r) => (
-                  <TR key={r.id} className="hover:bg-gray-50 transition">
-                    <TD>{r.full_name}</TD>
-                    <TD>{r.email}</TD>
-                    <TD>{r.phone || "-"}</TD>
-                    <TD>{r.date_of_birth || "-"}</TD>
-                    <TD>{r.verification_status || "-"}</TD>
-                    <TD>
-                      <div className="flex justify-center gap-2">
-                        <button
-                          onClick={() => openEdit(r)}
-                          className="p-1 text-gray-500 hover:text-indigo-600"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          onClick={() => setOpenDeleteId(r.id)}
-                          className="p-1 text-gray-500 hover:text-red-600"
-                        >
-                          🗑️
-                        </button>
-                        <button
-                          onClick={() => openMail(r)}
-                          className="p-1 text-gray-500 hover:text-blue-600"
-                        >
-                          ✉️
-                        </button>
-                      </div>
-                    </TD>
-                  </TR>
-                ))
-              )}
-            </TBody>
-          </Table>
-        </div>
+              ))
+            )}
+          </TBody>
+        </Table>
       </div>
 
-      {/* Create/Edit Dialog */}
-      <Dialog open={openForm} onClose={() => setOpenForm(false)} title={editing ? 'Edit Candidate' : 'Add Candidate'}>
-        <form className="space-y-4" onSubmit={submitForm}>
+      {/* FORM DIALOG */}
+      <Dialog
+        open={openForm}
+        onClose={() => setOpenForm(false)}
+        title={editing ? "Edit Candidate" : "Add Candidate"}
+      >
+        <form onSubmit={submitForm} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Full Name</label>
+            <label>Full Name</label>
             <Input
-              value={form.full_name || ''}
-              onChange={(e) => setForm({ ...form, full_name: e.target.value })}
               required
-              className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              value={form.full_name || ""}
+              onChange={(e) =>
+                setForm({ ...form, full_name: e.target.value })
+              }
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
+              <label>Email</label>
               <Input
                 type="email"
-                value={form.email || ''}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
                 required
-                className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                value={form.email || ""}
+                onChange={(e) =>
+                  setForm({ ...form, email: e.target.value })
+                }
               />
             </div>
+
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Phone</label>
+              <label>Phone</label>
               <Input
-                value={form.phone || ''}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                value={form.phone || ""}
+                onChange={(e) =>
+                  setForm({ ...form, phone: e.target.value })
+                }
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Date of Birth</label>
+              <label>Date of Birth</label>
               <Input
                 type="date"
-                value={form.date_of_birth || ''}
-                onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })}
-                className="rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                value={form.date_of_birth || ""}
+                onChange={(e) =>
+                  setForm({ ...form, date_of_birth: e.target.value })
+                }
               />
             </div>
 
+            {/* Resume upload both on create + edit */}
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Resume (PDF)</label>
+              <label>Resume (PDF, max 2MB)</label>
               <input
                 type="file"
                 accept="application/pdf"
-                onChange={(e) => setForm({ ...form, resume_file: e.target.files?.[0] || null })}
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  if (!file) {
+                    setForm({ ...form, resume_file: null });
+                    return;
+                  }
+
+                  if (file.type !== "application/pdf") {
+                    toast.error("Only PDF files allowed");
+                    e.target.value = "";
+                    return;
+                  }
+
+                  if (file.size > 2 * 1024 * 1024) {
+                    toast.error("File must be less than 2MB");
+                    e.target.value = "";
+                    return;
+                  }
+
+                  setForm({ ...form, resume_file: file });
+                }}
+                className="block w-full border rounded px-3 py-2"
               />
+
+              {/* Show existing resume ONLY in edit mode */}
+              {editing && form.resume_url && (
+                <p className="mt-2 text-sm">
+                  Current:{" "}
+                  <button
+                    type="button"
+                    className="text-indigo-600 hover:underline"
+                    onClick={() => handleViewResume(form.resume_url!)}
+                  >
+                    View Existing Resume
+                  </button>
+                </p>
+              )}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            {editing && (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Verification Status</label>
-                <select
-                  value={form.verification_status || 'New'}
-                  onChange={(e) => setForm({ ...form, verification_status: e.target.value })}
-                  className="block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                >
-                  {statusOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-          <div className="flex justify-end gap-3 pt-3">
-            <Button variant="outline" type="button" onClick={() => setOpenForm(false)} className="rounded-md px-4 py-2 shadow-sm">
+
+          {editing && (
+            <div>
+              <label>Verification Status</label>
+              <select
+                value={form.verification_status || "PENDING"}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    verification_status: e.target.value,
+                  })
+                }
+                className="w-full border px-3 py-2 rounded"
+              >
+                {statusOptions.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4">
+            <Button variant="outline" onClick={() => setOpenForm(false)}>
               Cancel
             </Button>
-            <Button type="submit" className="rounded-md px-4 py-2 shadow-md">
-              {editing ? 'Save' : 'Create'}
-            </Button>
+            <Button type="submit">{editing ? "Save" : "Create"}</Button>
           </div>
         </form>
       </Dialog>
 
-      {/* Delete Confirmation */}
+      {/* DELETE CONFIRMATION */}
       <Dialog
         open={!!openDeleteId}
         onClose={() => setOpenDeleteId(null)}
         title="Delete Candidate"
       >
-        <p className="text-sm text-gray-700">
-          Are you sure you want to delete this candidate? This action cannot be undone.
-        </p>
-        <div className="mt-6 flex justify-end gap-3">
-          <Button
-            variant="outline"
-            onClick={() => setOpenDeleteId(null)}
-            className="px-4 py-2"
-          >
+        <p>Are you sure you want to delete this candidate?</p>
+        <div className="flex justify-end gap-3 mt-4">
+          <Button variant="outline" onClick={() => setOpenDeleteId(null)}>
             Cancel
           </Button>
-          <Button
-            variant="danger"
-            onClick={confirmDelete}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all"
-          >
+          <Button variant="danger" onClick={confirmDelete}>
             Delete
           </Button>
         </div>
       </Dialog>
 
-      {/* 📨 Send Mail Dialog */}
+      {/* SEND MAIL */}
       <Dialog
         open={openMailDialog}
         onClose={() => setOpenMailDialog(false)}
-        title={`Send Mail to ${mailCandidate?.full_name || ""}`}
+        title={`Send Mail to ${mailCandidate?.full_name}`}
       >
         <div className="space-y-4">
           <div>
-            <label className="block font-medium text-gray-700 mb-1">
-              Select Email Template
-            </label>
+            <label>Select Template</label>
             <select
               value={selectedTemplateId}
               onChange={(e) => handleTemplateChange(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 shadow-sm px-4 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              className="w-full border px-3 py-2 rounded"
             >
-              <option value="">-- Select Template --</option>
+              <option value="">-- Select --</option>
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -406,47 +513,55 @@ export default function Candidates() {
             </select>
           </div>
 
-          {selectedTemplate && (() => {
-            const onboardingURL = `setNewPassword/${mailCandidate?.id}?token=${mailCandidate?.onboarding_token}`;
-            return (
-              <div className="p-3 border rounded-lg bg-gray-50">
-                <h3 className="font-semibold text-indigo-700 mb-1">Subject:</h3>
-                <p className="text-gray-800 mb-2">
-                  {selectedTemplate.subject.replace(
-                    "{{full_name}}",
-                    mailCandidate?.full_name || ""
-                  )}
-                </p>
-                <h3 className="font-semibold text-indigo-700 mb-1">Body Preview:</h3>
-                <div
-                  className="text-sm text-gray-700"
-                  dangerouslySetInnerHTML={{
-                    __html: selectedTemplate.body_html
-                      .replace(/{{full_name}}/g, mailCandidate?.full_name || "")
-                      .replace(/{{onboarding_link}}/g, onboardingURL || ""),
-                  }}
-                />
-              </div>
-            );
-          })()}
+          {selectedTemplate && mailCandidate && (
+            <div className="p-3 border rounded bg-gray-50">
+              <h3 className="font-semibold">Subject:</h3>
+              <p className="mb-2">
+                {selectedTemplate.subject.replace(
+                  "{{full_name}}",
+                  mailCandidate.full_name
+                )}
+              </p>
 
-          <div className="flex justify-end gap-3 pt-4 border-t">
-            <Button
-              variant="outline"
-              onClick={() => setOpenMailDialog(false)}
-              className="px-4 py-2"
-            >
+              <h3 className="font-semibold">Preview:</h3>
+              <div
+                className="text-sm"
+                dangerouslySetInnerHTML={{
+                  __html: selectedTemplate.body_html.replace(
+                    "{{full_name}}",
+                    mailCandidate.full_name
+                  ),
+                }}
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-3">
+            <Button variant="outline" onClick={() => setOpenMailDialog(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={sendMailToCandidate}
-              disabled={sendingMail}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all"
-            >
+            <Button onClick={sendMailToCandidate} disabled={sendingMail}>
               {sendingMail ? "Sending..." : "Send Mail"}
             </Button>
           </div>
         </div>
+      </Dialog>
+
+      {/* RESUME PREVIEW */}
+      <Dialog
+        open={openResumeDialog}
+        onClose={() => setOpenResumeDialog(false)}
+        title="Resume Preview"
+      >
+        {resumePreviewUrl ? (
+          <iframe
+            src={resumePreviewUrl}
+            className="w-full h-[70vh] rounded border"
+            title="Resume"
+          />
+        ) : (
+          <p>No Resume Available</p>
+        )}
       </Dialog>
     </div>
   );

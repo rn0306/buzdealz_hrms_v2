@@ -10,7 +10,7 @@ class PersonalDetailsController {
       const roleCode = req.user.Role?.code;
 
       let whereCondition = {
-        verification_status: { [Op.in]: ['VERIFIED', 'ACCEPTED'] }
+        verification_status: { [Op.notIn]: ['PENDING'] }
       };
 
       // ---------------------------------------

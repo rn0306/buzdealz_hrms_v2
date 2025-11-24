@@ -62,7 +62,6 @@ const SetNewPassword = () => {
       navigate("/login")
 
     } catch (err: any) {
-      console.log(err)
       setError(err?.response?.data?.message || "Something went wrong")
     }
   }
